@@ -10,12 +10,16 @@ MODULE_VERSION("0.0.1");
 #define SLAVE_DEVICE_NAME "MPU6050"
 #define MPU6050_ADDR 0x68
 #define MPU_ADDR_WHO_AM_I 0x75
+#define PWR_MGMT_ADDR 0x6B      // Power Management Register
+#define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
+#define TEMP_ADDR 0x41          // Temperature sensor address
+#define ACC_XOUT0 0x3B          // First register for Accelerometer X
 
 static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 
 
-static int I2C_Write(unsigned char reg, unsigned int value) {
+static int MPU6050_Write_Reg(unsigned char reg, unsigned int value) {
     int ret = -1;
     struct i2c_msg msg[1];
     msg[0].addr = mpu_i2c_client->addr;
@@ -48,6 +52,12 @@ static int MPU6050_Read_Reg(unsigned char reg) {
     return rec_buf[0];
 }
 
+static void MPU6050_Setup(void) {
+    MPU6050_Write_Reg(PWR_MGMT_ADDR, 0x00);
+    MPU6050_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
+}
+
+
 /*
 ** I2C Board Info strucutre
 */
@@ -64,6 +74,7 @@ static const struct i2c_device_id mpu_id[] = {
 MODULE_DEVICE_TABLE(i2c, mpu_id);
 
 
+
 /*
 ** This function getting called when the slave has been found
 ** Note : This will be called only once when we load the driver.
@@ -78,6 +89,8 @@ static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) 
     else {
         pr_info("Found device on: 0x%X\n", who_am_i);
     }
+    MPU6050_Setup();
+
     return 0;
 }
 
@@ -124,7 +137,7 @@ static int __init ModuleInitialization(void) {
 static void __exit ModuleExit(void) {
     i2c_unregister_device(mpu_i2c_client);
     i2c_del_driver(&mpu_driver);
-    pr_info("Removed MPU6050 driver\n");    
+    pr_info("Removed MPU6050 driver\n");
 }
 
 module_init(ModuleInitialization);
