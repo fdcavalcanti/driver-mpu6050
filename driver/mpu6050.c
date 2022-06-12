@@ -15,28 +15,33 @@ static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 
 
-static int I2C_Write(unsigned char *reg, unsigned int value) {
-    char buf[2];
-    buf[0] = reg;
-    buf[1] = value;
-    int ret = i2c_master_send(mpu_i2c_client, buf, 2);
-    return ret;
-}
-
-static int MPU6050_Read_Reg(unsigned char reg) {
-    struct i2c_msg msg[2];
-    char rec_buf[1];
-
-    msg[0].addr = MPU6050_ADDR;
+static int I2C_Write(unsigned char reg, unsigned int value) {
+    int ret = -1;
+    struct i2c_msg msg[1];
+    msg[0].addr = mpu_i2c_client->addr;
     msg[0].flags = 0;
     msg[0].len = 1;
     msg[0].buf = &reg;
-    msg[1].addr = MPU6050_ADDR;
+    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 1);
+    return ret;
+}
+
+
+static int MPU6050_Read_Reg(unsigned char reg) {
+    int ret = -1;
+    struct i2c_msg msg[2];
+    char rec_buf[1];
+
+    msg[0].addr = mpu_i2c_client->addr;
+    msg[0].flags = 0;
+    msg[0].len = 1;
+    msg[0].buf = &reg;
+    msg[1].addr = mpu_i2c_client->addr;
     msg[1].flags = I2C_M_RD;
     msg[1].len = 1;
     msg[1].buf = rec_buf;
 
-    int ret = i2c_transfer(mpu_i2c_adapter, msg, 2);
+    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 2);
     if (ret < 0) {
         pr_info("Erro reading register\n");
     }
@@ -64,8 +69,15 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 ** Note : This will be called only once when we load the driver.
 */
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
-    pr_info("Probing\n");
-    pr_info("Received: 0x%X\n", MPU6050_Read_Reg(0x75));
+    char who_am_i;
+    pr_info("Initializing MPU6050\n");
+    who_am_i = MPU6050_Read_Reg(0x75);
+    if (who_am_i != MPU6050_ADDR) {
+        pr_info("Bad device address: 0x%X\n", who_am_i);
+    }
+    else {
+        pr_info("Found device on: 0x%X\n", who_am_i);
+    }
     return 0;
 }
 
