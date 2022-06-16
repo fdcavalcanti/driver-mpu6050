@@ -3,11 +3,6 @@
 #include <linux/types.h>
 #include <linux/delay.h>
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Filipe do Ó Cavalcanti");
-MODULE_DESCRIPTION("MPU6050 Kernel Module -- studying Embedded Linux");
-MODULE_VERSION("0.0.1");
-
 #define I2C_BUS_AVAILABLE 1
 #define SLAVE_DEVICE_NAME "mpu6050"
 #define MPU6050_ADDR 0x68
@@ -86,27 +81,10 @@ static void MPU_Burst_Read(unsigned char start_reg, unsigned int length, unsigne
 
 
 /*
-** I2C Board Info strucutre
-*/
-static struct i2c_board_info mpu_i2c_board_info = {
-        I2C_BOARD_INFO(SLAVE_DEVICE_NAME, MPU6050_ADDR)
-};
-/*
-** Structure that has slave device id
-*/
-static const struct i2c_device_id mpu_id[] = {
-        {SLAVE_DEVICE_NAME, 0},
-        { }
-};
-MODULE_DEVICE_TABLE(i2c, mpu_id);
-
-
-/*
 ** This function getting called when the slave has been found
 ** Note : This will be called only once when we load the driver.
 */
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
-    int i;
     unsigned char who_am_i;
     unsigned char read_buf[16];
     unsigned char *rd_buf_ptr;
@@ -126,6 +104,7 @@ static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) 
     return 0;
 }
 
+
 /*
 ** This function getting called when the slave has been removed
 ** Note : This will be called only once when we unload the driver.
@@ -134,6 +113,25 @@ static int mpu_remove(struct i2c_client *client) {
     pr_info("Removing\n");
     return 0;
 }
+
+
+/*
+** I2C Board Info strucutre
+*/
+static struct i2c_board_info mpu_i2c_board_info = {
+        I2C_BOARD_INFO(SLAVE_DEVICE_NAME, MPU6050_ADDR)
+};
+
+
+/*
+** Structure that has slave device id
+*/
+static const struct i2c_device_id mpu_id[] = {
+        {SLAVE_DEVICE_NAME, 0},
+        { }
+};
+MODULE_DEVICE_TABLE(i2c, mpu_id);
+
 
 /*
 ** I2C driver Structure that has to be added to linux
@@ -181,5 +179,11 @@ static void __exit ModuleExit(void) {
     pr_info("Removed MPU6050 driver\n");
 }
 
+
 module_init(ModuleInitialization);
 module_exit(ModuleExit);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Filipe do Ó Cavalcanti");
+MODULE_DESCRIPTION("MPU6050 Kernel Module -- studying Embedded Linux");
+MODULE_VERSION("0.0.1");
