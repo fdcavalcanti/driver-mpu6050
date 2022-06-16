@@ -21,16 +21,27 @@ static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 dev_t devNr = 0;
 
-static int MPU6050_Write_Reg(unsigned char reg, unsigned int value) {
-    int ret = -1;
+
+/**
+ * MPU_Write_Reg() - Writes to a register.
+ * @reg: Register that will be written.
+ * @value: Value that will be written to the register.
+ *
+ * Return: Number of bytes written.
+ */
+static int MPU_Write_Reg(unsigned char reg, unsigned int value) {
     unsigned char send_buffer[2] = {reg, value};
-    ret = i2c_master_send(mpu_i2c_client, send_buffer, 2);
-    return ret;
+    return i2c_master_send(mpu_i2c_client, send_buffer, 2);
 }
 
 
-static int MPU6050_Read_Reg(unsigned char reg) {
-    int ret = -1;
+/**
+ * MPU_Read_Reg() - Read a single register.
+ * @reg: Register that will be read.
+ *
+ * Return: Register value.
+ */
+static unsigned char MPU_Read_Reg(unsigned char reg) {
     struct i2c_msg msg[2];
     unsigned char rec_buf[1];
 
@@ -43,18 +54,22 @@ static int MPU6050_Read_Reg(unsigned char reg) {
     msg[1].len = 1;
     msg[1].buf = rec_buf;
 
-    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 2);
-    if (ret < 0) {
-        pr_info("Erro reading register\n");
+    if (i2c_transfer(mpu_i2c_client->adapter, msg, 2) < 0) {
+        pr_err("Erro reading register 0x%X\n", reg);
     }
     return rec_buf[0];
 }
 
-static void MPU6050_Burst_Read(unsigned char start_reg, unsigned int length) {
-    int i;
-    int ret = -1;
+
+/**
+ * MPU_Burst_Read() - Read multiple registers in sequence.
+ * @reg: First register of the reading sequence.
+ * @length: Number of registers to be read.
+ * @rec_buffer: Pointer to a buffer that will store the read data.
+ *
+ */
+static void MPU_Burst_Read(unsigned char start_reg, unsigned int length, unsigned char *rec_buffer) {
     struct i2c_msg msg[2];
-    unsigned char rec_buffer[6] = {0};
 
     msg[0].addr = mpu_i2c_client->addr;
     msg[0].flags = 0;
@@ -64,10 +79,8 @@ static void MPU6050_Burst_Read(unsigned char start_reg, unsigned int length) {
     msg[1].flags = I2C_M_RD;
     msg[1].len = length;
     msg[1].buf = rec_buffer;
-    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 2);
-    pr_info("ret: %d\n", ret);
-    for (i=0; i<6; i++) {
-        pr_info("Buf %d: 0x%X\n", i, rec_buffer[i]);
+    if (i2c_transfer(mpu_i2c_client->adapter, msg, 2) < 0) {
+        pr_err("Erro burst reading register 0x%X\n", start_reg);
     }
 }
 
@@ -93,19 +106,23 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 ** Note : This will be called only once when we load the driver.
 */
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
+    int i;
     unsigned char who_am_i;
-    pr_info("Initializing MPU6050\n");
-    who_am_i = MPU6050_Read_Reg(MPU_ADDR_WHO_AM_I);
+    unsigned char read_buf[16];
+    unsigned char *rd_buf_ptr;
+    rd_buf_ptr = read_buf;
+
+    pr_info("Initializing MPU\n");
+    who_am_i = MPU_Read_Reg(MPU_ADDR_WHO_AM_I);
     if (who_am_i != MPU6050_ADDR) {
-        pr_info("Bad device address: 0x%X\n", who_am_i);
+        pr_err("Bad device address: 0x%X\n", who_am_i);
     }
     else {
         pr_info("Found device on: 0x%X\n", who_am_i);
     }
-
-    MPU6050_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
-    MPU6050_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
-    MPU6050_Burst_Read(0x3B, 6);
+    MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
+    MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
+    MPU_Burst_Read(0x3B, 6, rd_buf_ptr);
     return 0;
 }
 
@@ -136,7 +153,7 @@ static int __init ModuleInitialization(void) {
     int ret = -1;
     /* Allocate Device Nr */
     if (alloc_chrdev_region(&devNr, 0, 1, SLAVE_DEVICE_NAME) < 0) {
-        pr_info("Could not allocate chrdev\n");
+        pr_err("Could not allocate chrdev\n");
     }
     else {
         pr_info("Allocated dev nr: %d, %d\n", MAJOR(devNr), MINOR(devNr));
