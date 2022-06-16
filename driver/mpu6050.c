@@ -2,6 +2,10 @@
 #include <linux/i2c.h>
 #include <linux/types.h>
 #include <linux/delay.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/device.h>
+#include <linux/kdev_t.h>
 
 #define I2C_BUS_AVAILABLE 1
 #define SLAVE_DEVICE_NAME "mpu6050"
@@ -14,8 +18,8 @@
 
 static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
+static struct class *dev_class;
 dev_t devNr = 0;
-
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -157,6 +161,18 @@ static int __init ModuleInitialization(void) {
         pr_info("Allocated dev nr: %d, %d\n", MAJOR(devNr), MINOR(devNr));
     }
 
+    /* Create the struct class. This is necessary to appear in /dev/ */
+    dev_class = class_create(THIS_MODULE, "mpu_class");
+    if (dev_class == NULL) {
+        pr_err("Cannot create the struct class for device\n");
+        unregister_chrdev_region(devNr, 1);
+        return -1;
+    }
+    if (device_create(dev_class, NULL, devNr, NULL, SLAVE_DEVICE_NAME) == NULL){
+        pr_err("Cannot create the device\n");
+        class_destroy(dev_class);
+    }
+
     mpu_i2c_adapter = i2c_get_adapter(I2C_BUS_AVAILABLE);
     if (mpu_i2c_adapter != NULL) {
         mpu_i2c_client = i2c_new_client_device(mpu_i2c_adapter, &mpu_i2c_board_info);
@@ -175,6 +191,8 @@ static int __init ModuleInitialization(void) {
 static void __exit ModuleExit(void) {
     i2c_unregister_device(mpu_i2c_client);
     i2c_del_driver(&mpu_driver);
+    device_destroy(dev_class, devNr);
+    class_destroy(dev_class);
     unregister_chrdev_region(devNr, 1);
     pr_info("Removed MPU6050 driver\n");
 }
