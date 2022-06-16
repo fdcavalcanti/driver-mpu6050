@@ -1,6 +1,7 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/types.h>
+#include <linux/delay.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Filipe do Ó Cavalcanti");
@@ -22,12 +23,8 @@ dev_t devNr = 0;
 
 static int MPU6050_Write_Reg(unsigned char reg, unsigned int value) {
     int ret = -1;
-    struct i2c_msg msg[1];
-    msg[0].addr = mpu_i2c_client->addr;
-    msg[0].flags = 0;
-    msg[0].len = 1;
-    msg[0].buf = &reg;
-    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 1);
+    unsigned char send_buffer[2] = {reg, value};
+    ret = i2c_master_send(mpu_i2c_client, send_buffer, 2);
     return ret;
 }
 
@@ -53,27 +50,25 @@ static int MPU6050_Read_Reg(unsigned char reg) {
     return rec_buf[0];
 }
 
-static void MPU6050_Burst_Read(unsigned char init_reg, unsigned int length) {
+static void MPU6050_Burst_Read(unsigned char start_reg, unsigned int length) {
     int i;
+    int ret = -1;
     struct i2c_msg msg[2];
-    char rec_buf;
+    unsigned char rec_buffer[6] = {0};
 
     msg[0].addr = mpu_i2c_client->addr;
     msg[0].flags = 0;
     msg[0].len = 1;
-    msg[0].buf = &init_reg;
-    for (i=0; i<length; i++) {
-        msg[1].addr = mpu_i2c_client->addr;
-        msg[1].flags = I2C_M_RD;
-        msg[1].len = 1;
-        msg[1].buf = rec_buf;
-        pr_info("Read: 0x%X\n", rec_buf);
+    msg[0].buf = &start_reg;
+    msg[1].addr = mpu_i2c_client->addr;
+    msg[1].flags = I2C_M_RD;
+    msg[1].len = length;
+    msg[1].buf = rec_buffer;
+    ret = i2c_transfer(mpu_i2c_client->adapter, msg, 2);
+    pr_info("ret: %d\n", ret);
+    for (i=0; i<6; i++) {
+        pr_info("Buf %d: 0x%X\n", i, rec_buffer[i]);
     }
-}
-
-static void MPU6050_Setup(void) {
-    MPU6050_Write_Reg(PWR_MGMT_ADDR, 0x00);
-    MPU6050_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
 }
 
 
@@ -87,7 +82,7 @@ static struct i2c_board_info mpu_i2c_board_info = {
 ** Structure that has slave device id
 */
 static const struct i2c_device_id mpu_id[] = {
-        { SLAVE_DEVICE_NAME, 0 },
+        {SLAVE_DEVICE_NAME, 0},
         { }
 };
 MODULE_DEVICE_TABLE(i2c, mpu_id);
@@ -100,16 +95,17 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
     unsigned char who_am_i;
     pr_info("Initializing MPU6050\n");
-    who_am_i = MPU6050_Read_Reg(0x75);
+    who_am_i = MPU6050_Read_Reg(MPU_ADDR_WHO_AM_I);
     if (who_am_i != MPU6050_ADDR) {
         pr_info("Bad device address: 0x%X\n", who_am_i);
     }
     else {
         pr_info("Found device on: 0x%X\n", who_am_i);
     }
-    MPU6050_Setup();
-    MPU6050_Burst_Read(0x3B, 6);
 
+    MPU6050_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
+    MPU6050_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
+    MPU6050_Burst_Read(0x3B, 6);
     return 0;
 }
 
