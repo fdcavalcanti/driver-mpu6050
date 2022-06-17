@@ -6,10 +6,11 @@
 #include <linux/device.h>
 #include <linux/kdev_t.h>
 #include <linux/slab.h>
+#include <linux/timer.h>
 
 
 #define I2C_BUS_AVAILABLE 1
-#define KERNEL_BUFFER_SIZE 1024
+#define KERNEL_BUFFER_SIZE 6
 #define SLAVE_DEVICE_NAME "mpu6050"
 #define MPU6050_ADDR 0x68
 #define MPU_ADDR_WHO_AM_I 0x75
@@ -17,13 +18,17 @@
 #define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
 #define TEMP_ADDR 0x41          // Temperature sensor address
 #define ACC_XOUT0 0x3B          // First register for Accelerometer X
+#define TIMER_TIMEOUT 100        // milliseconds
 
 static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 static struct class *dev_class;
 static struct cdev mpu_cdev;
-dev_t devNr = 0;
+static struct timer_list accelerometer_timer;
 unsigned char *kernel_buffer;
+dev_t devNr = 0;
+int callback_count = 0;
+
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -87,6 +92,10 @@ static void MPU_Burst_Read(unsigned char start_reg, unsigned int length, unsigne
     }
 }
 
+void timer_callback(struct timer_list * data) {
+    MPU_Burst_Read(0x3B, 6, kernel_buffer);
+    callback_count++;
+}
 
 /*
 ** This function getting called when the slave has been found
@@ -95,8 +104,6 @@ static void MPU_Burst_Read(unsigned char start_reg, unsigned int length, unsigne
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
     unsigned char who_am_i;
     unsigned char read_buf[16];
-    unsigned char *rd_buf_ptr;
-    rd_buf_ptr = read_buf;
 
     pr_info("Initializing MPU\n");
     who_am_i = MPU_Read_Reg(MPU_ADDR_WHO_AM_I);
@@ -108,7 +115,6 @@ static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) 
     }
     MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
     MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
-    MPU_Burst_Read(0x3B, 6, rd_buf_ptr);
     return 0;
 }
 
@@ -137,7 +143,7 @@ static int mpu_open(struct inode *deviceFile, struct file *instance) {
 static ssize_t mpu_read(struct file *File, char *user_buffer, size_t count, loff_t *offs) {
     unsigned char read_buf[16];
     pr_info("MPU Driver - Read was called\n");
-    MPU_Burst_Read(0x3B, 6, kernel_buffer);
+    //MPU_Burst_Read(0x3B, 6, kernel_buffer);
     if (copy_to_user(user_buffer, kernel_buffer, count)) {
         pr_err("Cannot copy data to user space\n");
     }
@@ -233,7 +239,7 @@ static int __init ModuleInitialization(void) {
     }
 
     /* Allocating memory to use for data transfer between kernel and user spaces */
-    kernel_buffer = kmalloc(KERNEL_BUFFER_SIZE, GFP_KERNEL);
+    kernel_buffer = kmalloc(KERNEL_BUFFER_SIZE, GFP_ATOMIC);
     if (kernel_buffer == 0) {
         pr_err("Cannot allocate memory in kernel\n");
         return -1;
@@ -249,6 +255,11 @@ static int __init ModuleInitialization(void) {
         // Get adapter will increment adapter number by 1. This call will go back by one.
         i2c_put_adapter(mpu_i2c_adapter);
     }
+    
+    /* setup your timer to call my_timer_callback */
+    timer_setup(&accelerometer_timer, timer_callback, 0);
+    /* setup timer interval to based on TIMEOUT Macro */
+    mod_timer(&accelerometer_timer, jiffies + msecs_to_jiffies(TIMER_TIMEOUT));
 
     pr_info("Initialized MPU6050 driver\n");
     return ret;
