@@ -1,7 +1,6 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/types.h>
-#include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
@@ -19,6 +18,7 @@
 static struct i2c_adapter *mpu_i2c_adapter     = NULL;  // I2C Adapter Structure
 static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 static struct class *dev_class;
+static struct cdev mpu_cdev;
 dev_t devNr = 0;
 
 /**
@@ -119,6 +119,47 @@ static int mpu_remove(struct i2c_client *client) {
 }
 
 
+/**
+ * This function is called, when the device file is opened
+ */
+static int mpu_open(struct inode *deviceFile, struct file *instance) {
+	pr_info("MPU Driver - Open was called\n");
+	return 0;
+}
+
+/**
+ * This function is called, when the device file is reading
+ */
+static ssize_t mpu_read(struct file *File, char *user_buffer, size_t count, loff_t *offs) {
+	pr_info("MPU Driver - Read was called\n");
+	return 0;
+}
+
+/**
+ * This function is called, when the device file is writing
+ */
+static ssize_t mpu_write(struct file *File, const char *user_buffer, size_t count, loff_t *offs) {
+	pr_info("MPU Driver - Write was called\n");
+    return 0;
+}
+
+/**
+ * This function is called, when the device file is closing
+ */
+static int mpu_close(struct inode *deviceFile, struct file *instance) {
+    pr_info("MPU Driver - Close was called\n");
+    return 0;
+}
+
+/* Map the file operations */
+static struct file_operations fops = {
+    .owner = THIS_MODULE,
+    .open = mpu_open,
+    .read = mpu_read,
+    .write = mpu_write,
+    .release = mpu_close,
+};
+
 /*
 ** I2C Board Info strucutre
 */
@@ -173,6 +214,12 @@ static int __init ModuleInitialization(void) {
         class_destroy(dev_class);
     }
 
+	/* Initialize Device file */
+	cdev_init(&mpu_cdev, &fops);
+    if (cdev_add(&mpu_cdev, devNr, 1) < 0) {
+        pr_err("Cannot create file operation (cdev)\n");
+    }
+
     mpu_i2c_adapter = i2c_get_adapter(I2C_BUS_AVAILABLE);
     if (mpu_i2c_adapter != NULL) {
         mpu_i2c_client = i2c_new_client_device(mpu_i2c_adapter, &mpu_i2c_board_info);
@@ -191,6 +238,7 @@ static int __init ModuleInitialization(void) {
 static void __exit ModuleExit(void) {
     i2c_unregister_device(mpu_i2c_client);
     i2c_del_driver(&mpu_driver);
+    cdev_del(&mpu_cdev);
     device_destroy(dev_class, devNr);
     class_destroy(dev_class);
     unregister_chrdev_region(devNr, 1);
