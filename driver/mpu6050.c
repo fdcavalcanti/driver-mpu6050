@@ -5,8 +5,11 @@
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/kdev_t.h>
+#include <linux/slab.h>
+
 
 #define I2C_BUS_AVAILABLE 1
+#define KERNEL_BUFFER_SIZE 1024
 #define SLAVE_DEVICE_NAME "mpu6050"
 #define MPU6050_ADDR 0x68
 #define MPU_ADDR_WHO_AM_I 0x75
@@ -20,6 +23,7 @@ static struct i2c_client  *mpu_i2c_client      = NULL;  // I2C Client Structure
 static struct class *dev_class;
 static struct cdev mpu_cdev;
 dev_t devNr = 0;
+unsigned char *kernel_buffer;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -131,8 +135,16 @@ static int mpu_open(struct inode *deviceFile, struct file *instance) {
  * This function is called, when the device file is reading
  */
 static ssize_t mpu_read(struct file *File, char *user_buffer, size_t count, loff_t *offs) {
-	pr_info("MPU Driver - Read was called\n");
-	return 0;
+    unsigned char read_buf[16];
+    pr_info("MPU Driver - Read was called\n");
+    MPU_Burst_Read(0x3B, 6, kernel_buffer);
+    if (copy_to_user(user_buffer, kernel_buffer, count)) {
+        pr_err("Cannot copy data to user space\n");
+    }
+    else {
+        pr_info("Copied ok\n");
+    }
+    return 0;
 }
 
 /**
@@ -218,6 +230,13 @@ static int __init ModuleInitialization(void) {
 	cdev_init(&mpu_cdev, &fops);
     if (cdev_add(&mpu_cdev, devNr, 1) < 0) {
         pr_err("Cannot create file operation (cdev)\n");
+    }
+
+    /* Allocating memory to use for data transfer between kernel and user spaces */
+    kernel_buffer = kmalloc(KERNEL_BUFFER_SIZE, GFP_KERNEL);
+    if (kernel_buffer == 0) {
+        pr_err("Cannot allocate memory in kernel\n");
+        return -1;
     }
 
     mpu_i2c_adapter = i2c_get_adapter(I2C_BUS_AVAILABLE);
