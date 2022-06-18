@@ -9,7 +9,7 @@
 
 
 #define I2C_BUS_AVAILABLE 1
-#define KERNEL_BUFFER_SIZE 1024
+#define KERNEL_BUFFER_SIZE 6
 #define SLAVE_DEVICE_NAME "mpu6050"
 #define MPU6050_ADDR 0x68
 #define MPU_ADDR_WHO_AM_I 0x75
@@ -94,9 +94,6 @@ static void MPU_Burst_Read(unsigned char start_reg, unsigned int length, unsigne
 */
 static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) {
     unsigned char who_am_i;
-    unsigned char read_buf[16];
-    unsigned char *rd_buf_ptr;
-    rd_buf_ptr = read_buf;
 
     pr_info("Initializing MPU\n");
     who_am_i = MPU_Read_Reg(MPU_ADDR_WHO_AM_I);
@@ -106,9 +103,8 @@ static int mpu_probe(struct i2c_client *client, const struct i2c_device_id *id) 
     else {
         pr_info("Found device on: 0x%X\n", who_am_i);
     }
-    MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
+    MPU_Write_Reg(PWR_MGMT_ADDR, 0x00);  // Set PLL with X Gyro Reference
     MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
-    MPU_Burst_Read(0x3B, 6, rd_buf_ptr);
     return 0;
 }
 
@@ -135,7 +131,6 @@ static int mpu_open(struct inode *deviceFile, struct file *instance) {
  * This function is called, when the device file is reading
  */
 static ssize_t mpu_read(struct file *File, char *user_buffer, size_t count, loff_t *offs) {
-    unsigned char read_buf[16];
     pr_info("MPU Driver - Read was called\n");
     MPU_Burst_Read(0x3B, 6, kernel_buffer);
     if (copy_to_user(user_buffer, kernel_buffer, count)) {
