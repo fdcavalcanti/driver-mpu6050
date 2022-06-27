@@ -6,6 +6,7 @@
 #include <linux/kdev_t.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/sysfs.h>
 #include <linux/types.h>
 
 #define I2C_BUS_AVAILABLE 1
@@ -25,6 +26,7 @@ static struct cdev mpu_cdev;
 dev_t devNr = 0;
 unsigned char *kernel_buffer;
 static struct kobject *kobj_ref;
+volatile int etx_value = 0;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -156,6 +158,19 @@ static int mpu_close(struct inode *deviceFile, struct file *instance) {
   return 0;
 }
 
+ssize_t sysfs_show(struct kobject *kobj, struct kobj_attribute *attr,
+                   char *buf) {
+  return snprintf(buf, sizeof(buf), "%d", etx_value);
+}
+ssize_t sysfs_store(struct kobject *kobj, struct kobj_attribute *attr,
+                    const char *buf, size_t count) {
+  sscanf(buf, 1, "%d", &etx_value);
+  return count;
+}
+
+struct kobj_attribute etx_attr = __ATTR(etx_value, 0660, sysfs_show,
+                                        sysfs_store);
+
 /* Map the file operations */
 static struct file_operations fops = {
   .owner = THIS_MODULE,
@@ -221,6 +236,7 @@ static int __init ModuleInitialization(void) {
 
   /*Creating a directory in /sys/kernel/ */
   kobj_ref = kobject_create_and_add("mpu6050", fs_kobj);  // /sys/fs/mpu6050
+  sysfs_create_file(kobj_ref, &etx_attr.attr);
 
   /* Allocating memory to use for data transfer between kernel and user spaces
    */
@@ -249,6 +265,7 @@ static int __init ModuleInitialization(void) {
 
 static void __exit ModuleExit(void) {
   kobject_put(kobj_ref);
+  sysfs_remove_file(kernel_kobj, &etx_attr.attr);
   i2c_unregister_device(mpu_i2c_client);
   i2c_del_driver(&mpu_driver);
   cdev_del(&mpu_cdev);
