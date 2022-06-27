@@ -2,6 +2,7 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
+#include <linux/kobject.h>
 #include <linux/kdev_t.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -23,6 +24,7 @@ static struct class *dev_class;
 static struct cdev mpu_cdev;
 dev_t devNr = 0;
 unsigned char *kernel_buffer;
+static struct kobject *kobj_ref;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -217,6 +219,9 @@ static int __init ModuleInitialization(void) {
     pr_err("Cannot create file operation (cdev)\n");
   }
 
+  /*Creating a directory in /sys/kernel/ */
+  kobj_ref = kobject_create_and_add("mpu6050", fs_kobj);  // /sys/fs/mpu6050
+
   /* Allocating memory to use for data transfer between kernel and user spaces
    */
   kernel_buffer = kmalloc(KERNEL_BUFFER_SIZE, GFP_KERNEL);
@@ -243,6 +248,7 @@ static int __init ModuleInitialization(void) {
 }
 
 static void __exit ModuleExit(void) {
+  kobject_put(kobj_ref);
   i2c_unregister_device(mpu_i2c_client);
   i2c_del_driver(&mpu_driver);
   cdev_del(&mpu_cdev);
