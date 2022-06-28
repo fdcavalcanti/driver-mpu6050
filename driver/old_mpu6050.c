@@ -104,8 +104,8 @@ static int mpu_probe(struct i2c_client *client,
   } else {
     pr_info("Found device on: 0x%X\n", who_am_i);
   }
-  MPU_Write_Reg(PWR_MGMT_ADDR, 0x00);  // Set PLL with X Gyro Reference
-  MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x00);
+  MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);  // Set PLL with X Gyro Reference
+  MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
   return 0;
 }
 

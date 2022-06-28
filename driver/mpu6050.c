@@ -1,20 +1,128 @@
 #define pr_fmt(fmt) "%s %s: " fmt, KBUILD_MODNAME, __func__
+#include <linux/i2c.h>
 #include <linux/module.h>
 
-static int MPU_ADDR = 0x68;
+#define MPU_NAME "mpu6050"
+#define MPU_ADDR 0x68
+#define WHO_AM_I_ADDR 0x75
+#define PWR_MGMT_ADDR 0x6B      // Power Management Register
+#define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
+#define TEMP_ADDR 0x41          // Temperature sensor address
+#define ACC_XOUT0 0x3B          // First register for Accelerometer X
+#define FIFO_EN 0x23            // Which sensor measurements are loaded
+                                // into the FIFO buffer.
+#define SMPRT_DIV 0x19          // divider from the gyroscope output rate
+                                // used to generate the Sample Rate
+
+static int I2C_BUS = 1;
+static struct i2c_adapter *mpu_adapter;
+static struct i2c_client *mpu_client;
+
+/**
+ * MPU_Write_Reg() - Writes to a register.
+ * @reg: Register that will be written.
+ * @value: Value that will be written to the register.
+ *
+ * Return: Number of bytes written.
+ */
+static int MPU_Write_Reg(unsigned char reg, unsigned int value) {
+  int ret = 0;
+  unsigned char send_buffer[2] = {reg, value};
+  ret = i2c_master_send(mpu_client, send_buffer, 2);
+  if (ret != 2) {
+    pr_err("Failed writing register");
+  }
+  return ret;
+}
+
+/**
+ * MPU_Read_Reg() - Read a single register.
+ * @reg: Register that will be read.
+ *
+ * Return: Register value.
+ */
+static unsigned char MPU_Read_Reg(unsigned char reg) {
+  struct i2c_msg msg[2];
+  unsigned char rec_buf[1];
+
+  msg[0].addr = mpu_client->addr;
+  msg[0].flags = 0;
+  msg[0].len = 1;
+  msg[0].buf = &reg;
+  msg[1].addr = mpu_client->addr;
+  msg[1].flags = I2C_M_RD;
+  msg[1].len = 1;
+  msg[1].buf = rec_buf;
+
+  if (i2c_transfer(mpu_client->adapter, msg, 2) < 0) {
+    pr_err("Erro reading register 0x%X", reg);
+  }
+  return rec_buf[0];
+}
+
+static struct i2c_board_info mpu_board_info = {
+  I2C_BOARD_INFO(MPU_NAME, MPU_ADDR),
+};
+
+static struct i2c_device_id mpu_id[] = {
+  {MPU_NAME, 0}, {}
+};
+MODULE_DEVICE_TABLE(i2c, mpu_id);
+
+static int mpu_probe(struct i2c_client *client,
+                     const struct i2c_device_id *id) {
+  unsigned char who_am_i;
+  pr_info("Initializing driver");
+  who_am_i = MPU_Read_Reg(WHO_AM_I_ADDR);
+  if (who_am_i != MPU_ADDR) {
+    pr_err("Bad device address: 0x%X", who_am_i);
+  } else {
+    pr_info("Found device on: 0x%X", who_am_i);
+  }
+  MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);
+  MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
+  MPU_Write_Reg(FIFO_EN, 0x08);
+  MPU_Write_Reg(SMPRT_DIV, 0x4F);
+  pr_info("Done probing");
+  return 0;
+}
+
+static int mpu_remove(struct i2c_client *client) {
+  pr_info("Removing\n");
+  MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
+  return 0;
+}
+
+static struct i2c_driver mpu_driver = {
+  .driver = {
+    .name = MPU_NAME,
+    .owner = THIS_MODULE,
+  },
+  .probe = mpu_probe,
+  .remove = mpu_remove,
+  .id_table = mpu_id,
+};
 
 static int __init mpu_init(void) {
-  pr_info("Initializing MPU on 0x%X", MPU_ADDR);
-
+  mpu_adapter = i2c_get_adapter(I2C_BUS);
+  if (mpu_adapter != NULL) {
+    mpu_client = i2c_new_client_device(mpu_adapter, &mpu_board_info);
+    if (mpu_client != NULL) {
+      i2c_add_driver(&mpu_driver);
+    }
+  }
+  i2c_put_adapter(mpu_adapter);
   return 0;
 }
 
 static void __exit mpu_exit(void) {
-  pr_info("Removing MPU\n");
+  i2c_unregister_device(mpu_client);
+  i2c_del_driver(&mpu_driver);
+  pr_info("Driver closed\n");
 }
 
-module_param(MPU_ADDR, int, S_IRUSR | S_IWUSR);
-MODULE_PARM_DESC(MPU_ADDR, "MPU I2C address.");
+// module_param(MPU_ADDR, int, S_IRUSR | S_IWUSR);
+// MODULE_PARM_DESC(MPU_ADDR, "MPU I2C address.");
 
 module_init(mpu_init);
 module_exit(mpu_exit);
