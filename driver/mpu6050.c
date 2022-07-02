@@ -26,8 +26,9 @@ static struct i2c_client *mpu_client;
  * Return: Number of bytes written.
  */
 static int MPU_Write_Reg(unsigned char reg, unsigned int value) {
-  int ret = 0;
   unsigned char send_buffer[2] = {reg, value};
+  int ret;
+
   ret = i2c_master_send(mpu_client, send_buffer, 2);
   if (ret != 2) {
     pr_err("Failed writing register");
@@ -39,11 +40,11 @@ static int MPU_Write_Reg(unsigned char reg, unsigned int value) {
  * MPU_Read_Reg() - Read a single register.
  * @reg: Register that will be read.
  *
- * Return: Register value.
+ * Return: bytes read.
  */
-static unsigned char MPU_Read_Reg(unsigned char reg) {
+static int MPU_Read_Reg(unsigned char reg, unsigned char *rec_buf) {
   struct i2c_msg msg[2];
-  unsigned char rec_buf[1];
+  int ret;
 
   msg[0].addr = mpu_client->addr;
   msg[0].flags = 0;
@@ -54,10 +55,39 @@ static unsigned char MPU_Read_Reg(unsigned char reg) {
   msg[1].len = 1;
   msg[1].buf = rec_buf;
 
-  if (i2c_transfer(mpu_client->adapter, msg, 2) < 0) {
+  ret = i2c_transfer(mpu_client->adapter, msg, 2);
+  if (ret < 0) {
     pr_err("Erro reading register 0x%X", reg);
   }
-  return rec_buf[0];
+  return ret;
+}
+
+/**
+ * MPU_Burst_Read() - Read multiple registers in sequence.
+ * @reg: First register of the reading sequence.
+ * @length: Number of registers to be read.
+ * @rec_buffer: Pointer to a buffer that will store the read data.
+ *
+ * Return: bytes sent and received
+ */
+static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
+                          unsigned char *rec_buffer) {
+  int ret;
+  struct i2c_msg msg[2];
+
+  msg[0].addr = mpu_client->addr;
+  msg[0].flags = 0;
+  msg[0].len = 1;
+  msg[0].buf = &start_reg;
+  msg[1].addr = mpu_client->addr;
+  msg[1].flags = I2C_M_RD;
+  msg[1].len = length;
+  msg[1].buf = rec_buffer;
+  ret = i2c_transfer(mpu_client->adapter, msg, 2);
+  if (ret < 0) {
+    pr_err("Erro burst reading register 0x%X\n", start_reg);
+  }
+  return ret;
 }
 
 static struct i2c_board_info mpu_board_info = {
@@ -73,7 +103,7 @@ static int mpu_probe(struct i2c_client *client,
                      const struct i2c_device_id *id) {
   unsigned char who_am_i;
   pr_info("Initializing driver");
-  who_am_i = MPU_Read_Reg(WHO_AM_I_ADDR);
+  MPU_Read_Reg(WHO_AM_I_ADDR, &who_am_i);
   if (who_am_i != MPU_ADDR) {
     pr_err("Bad device address: 0x%X", who_am_i);
   } else {
@@ -118,7 +148,7 @@ static int __init mpu_init(void) {
 static void __exit mpu_exit(void) {
   i2c_unregister_device(mpu_client);
   i2c_del_driver(&mpu_driver);
-  pr_info("Driver closed\n");
+  pr_info("Driver removed\n");
 }
 
 // module_param(MPU_ADDR, int, S_IRUSR | S_IWUSR);
