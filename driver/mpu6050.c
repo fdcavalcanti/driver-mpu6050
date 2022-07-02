@@ -1,4 +1,5 @@
 #define pr_fmt(fmt) "%s %s: " fmt, KBUILD_MODNAME, __func__
+#include <linux/device.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
 
@@ -17,6 +18,7 @@
 static int I2C_BUS = 1;
 static struct i2c_adapter *mpu_adapter;
 static struct i2c_client *mpu_client;
+dev_t devNr = 0;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -134,6 +136,11 @@ static struct i2c_driver mpu_driver = {
 };
 
 static int __init mpu_init(void) {
+  if (alloc_chrdev_region(&devNr, 0, 1, MPU_NAME) < 0) {
+    pr_err("Failed to allocate chr dev number");
+    return -1;
+  }
+
   mpu_adapter = i2c_get_adapter(I2C_BUS);
   if (mpu_adapter != NULL) {
     mpu_client = i2c_new_client_device(mpu_adapter, &mpu_board_info);
@@ -146,6 +153,7 @@ static int __init mpu_init(void) {
 }
 
 static void __exit mpu_exit(void) {
+  unregister_chrdev_region(devNr, 1);
   i2c_unregister_device(mpu_client);
   i2c_del_driver(&mpu_driver);
   pr_info("Driver removed\n");
