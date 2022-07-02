@@ -19,6 +19,7 @@ static int I2C_BUS = 1;
 static struct i2c_adapter *mpu_adapter;
 static struct i2c_client *mpu_client;
 dev_t devNr = 0;
+static struct class *dev_class;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -141,6 +142,17 @@ static int __init mpu_init(void) {
     return -1;
   }
 
+  dev_class = class_create(THIS_MODULE, "mpu_class");
+  if (dev_class == NULL) {
+    pr_err("Failed to create device class");
+    goto r_class;
+  }
+
+  if (device_create(dev_class, NULL, devNr, NULL, MPU_NAME) < 0) {
+    pr_err("Failed to create the device");
+    goto r_device;
+  }
+
   mpu_adapter = i2c_get_adapter(I2C_BUS);
   if (mpu_adapter != NULL) {
     mpu_client = i2c_new_client_device(mpu_adapter, &mpu_board_info);
@@ -150,9 +162,17 @@ static int __init mpu_init(void) {
   }
   i2c_put_adapter(mpu_adapter);
   return 0;
+
+r_device:
+  class_destroy(dev_class);
+r_class:
+  unregister_chrdev_region(devNr, 1);
+  return -1;
 }
 
 static void __exit mpu_exit(void) {
+  device_destroy(dev_class, devNr);
+  class_destroy(dev_class);
   unregister_chrdev_region(devNr, 1);
   i2c_unregister_device(mpu_client);
   i2c_del_driver(&mpu_driver);
