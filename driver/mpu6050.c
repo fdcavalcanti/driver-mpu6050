@@ -116,8 +116,10 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
 
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
+  unsigned char test_buf[6];
+  MPU_Burst_Read(0x3B, 6, test_buf);
   pr_info("Called sysfs show!");
-  return 0;
+  return snprintf(buf, sizeof(test_buf), "%X %X", test_buf[0], test_buf[1]);
 }
 
 ssize_t sysfs_acc_store(struct kobject *kobj, struct kobj_attribute *attr,
