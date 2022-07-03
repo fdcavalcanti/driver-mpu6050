@@ -3,6 +3,7 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
+#include <linux/kobject.h>
 #include <linux/module.h>
 
 #define MPU_NAME "mpu6050"
@@ -23,6 +24,23 @@ static struct i2c_client *mpu_client;
 dev_t devNr = 0;
 static struct class *dev_class;
 static struct cdev mpu_cdev;
+struct kobject *kobj_ref;
+
+struct acc_data {
+  float x;
+  float y;
+  float z;
+};
+
+struct acc_data acc_read;
+
+ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
+                       char *buf);
+ssize_t sysfs_acc_store(struct kobject *kobj, struct kobj_attribute *attr,
+                        const char *buf, size_t count);
+
+struct kobj_attribute mpu_acc_attr = __ATTR(acc_data, 0660, sysfs_acc_show,
+                                            sysfs_acc_store);
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -94,6 +112,18 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
     pr_err("Erro burst reading register 0x%X\n", start_reg);
   }
   return ret;
+}
+
+ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
+                       char *buf) {
+  pr_info("Called sysfs show!");
+  return 0;
+}
+
+ssize_t sysfs_acc_store(struct kobject *kobj, struct kobj_attribute *attr,
+                        const char *buf, size_t count) {
+  pr_info("Called sysfs store!");
+  return 0;
 }
 
 static struct i2c_board_info mpu_board_info = {
@@ -199,6 +229,12 @@ static int __init mpu_init(void) {
     goto r_device;
   }
 
+  kobj_ref = kobject_create_and_add(MPU_NAME, fs_kobj);
+  if (sysfs_create_file(kobj_ref, &mpu_acc_attr.attr) < 0) {
+    pr_err("Failed to create kobject!");
+    goto r_sysfs;
+  }
+
   mpu_adapter = i2c_get_adapter(I2C_BUS);
   if (mpu_adapter != NULL) {
     mpu_client = i2c_new_client_device(mpu_adapter, &mpu_board_info);
@@ -209,6 +245,9 @@ static int __init mpu_init(void) {
   i2c_put_adapter(mpu_adapter);
   return 0;
 
+r_sysfs:
+  kobject_put(kobj_ref);
+  sysfs_remove_file(fs_kobj, &mpu_acc_attr.attr);
 r_device:
   class_destroy(dev_class);
 r_class:
@@ -217,6 +256,8 @@ r_class:
 }
 
 static void __exit mpu_exit(void) {
+  kobject_put(kobj_ref);
+  sysfs_remove_file(kernel_kobj, &mpu_acc_attr.attr);
   device_destroy(dev_class, devNr);
   class_destroy(dev_class);
   unregister_chrdev_region(devNr, 1);
