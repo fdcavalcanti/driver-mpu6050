@@ -141,7 +141,9 @@ static int mpu_release(struct inode *inode, struct file *file) {
 static ssize_t mpu_read(struct file *filp, char __user *buf, size_t len,
                         loff_t *off) {
   int ret;
-  ret = MPU_Burst_Read(0x75, len, buf);
+  unsigned char test_buf;
+  ret = MPU_Read_Reg(0x75, &test_buf);
+  buf[0] = test_buf;
   return ret;
 }
 
