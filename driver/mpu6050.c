@@ -13,6 +13,8 @@
 #define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
 #define TEMP_ADDR 0x41          // Temperature sensor address
 #define ACC_XOUT0 0x3B          // First register for Accelerometer X
+#define FIFO_R_W 0x74           // FIFO buffer
+#define FIFO_COUNT_H 0x72       // FIFO Count Register 15:8 (0x73 for 7:0)
 #define FIFO_EN 0x23            // Which sensor measurements are loaded
                                 // into the FIFO buffer.
 #define SMPRT_DIV 0x19          // divider from the gyroscope output rate
@@ -26,21 +28,24 @@ static struct class *dev_class;
 static struct cdev mpu_cdev;
 struct kobject *kobj_ref;
 
-struct acc_data {
+struct xyz_data {
   float x;
   float y;
   float z;
 };
 
-struct acc_data acc_read;
+struct xyz_data acc_read;
+unsigned int fifo_count;
 
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf);
-ssize_t sysfs_acc_store(struct kobject *kobj, struct kobj_attribute *attr,
-                        const char *buf, size_t count);
+ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
+                              char *buf);
 
-struct kobj_attribute mpu_acc_attr = __ATTR(acc_data, 0660, sysfs_acc_show,
-                                            sysfs_acc_store);
+struct kobj_attribute mpu_acc_attr = __ATTR(xyz_data, 0660, sysfs_acc_show,
+                                            NULL);
+struct kobj_attribute fifo_count_attr = __ATTR(fifo_count, 0660,
+                                               sysfs_fifo_count_read, NULL);
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -114,18 +119,23 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
   return ret;
 }
 
+ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
+                              char *buf) {
+  unsigned char test_buf[2];
+  MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
+  fifo_count = (test_buf[0] << 8) + test_buf[1];
+  return snprintf(buf, sizeof(fifo_count), "%X", fifo_count);
+}
+
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
   unsigned char test_buf[6];
-  MPU_Burst_Read(0x3B, 6, test_buf);
-  pr_info("Called sysfs show!");
-  return snprintf(buf, sizeof(test_buf), "%X %X", test_buf[0], test_buf[1]);
-}
-
-ssize_t sysfs_acc_store(struct kobject *kobj, struct kobj_attribute *attr,
-                        const char *buf, size_t count) {
-  pr_info("Called sysfs store!");
-  return 0;
+  char output_buf[20];
+  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
+  snprintf(output_buf, sizeof(output_buf), "%X %X\n%X %X\n%X %X\n",
+           test_buf[0], test_buf[1], test_buf[2], test_buf[3], test_buf[4],
+           test_buf[5]);
+  return snprintf(buf, sizeof(output_buf), "%s", output_buf);
 }
 
 static struct i2c_board_info mpu_board_info = {
@@ -157,7 +167,7 @@ static int mpu_probe(struct i2c_client *client,
 
 static int mpu_i2c_remove(struct i2c_client *client) {
   pr_info("Removing\n");
-  MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
+  // MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
   return 0;
 }
 
@@ -236,6 +246,10 @@ static int __init mpu_init(void) {
     pr_err("Failed to create kobject!");
     goto r_sysfs;
   }
+  if (sysfs_create_file(kobj_ref, &fifo_count_attr.attr) < 0) {
+    pr_err("Failed to create kobject!");
+    goto r_sysfs;
+  }
 
   mpu_adapter = i2c_get_adapter(I2C_BUS);
   if (mpu_adapter != NULL) {
@@ -260,6 +274,7 @@ r_class:
 static void __exit mpu_exit(void) {
   kobject_put(kobj_ref);
   sysfs_remove_file(kernel_kobj, &mpu_acc_attr.attr);
+  sysfs_remove_file(kernel_kobj, &fifo_count_attr.attr);
   device_destroy(dev_class, devNr);
   class_destroy(dev_class);
   unregister_chrdev_region(devNr, 1);
