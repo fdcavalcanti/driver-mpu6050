@@ -1,5 +1,7 @@
 #define pr_fmt(fmt) "%s %s: " fmt, KBUILD_MODNAME, __func__
+#include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/fs.h>
 #include <linux/i2c.h>
 #include <linux/module.h>
 
@@ -20,6 +22,7 @@ static struct i2c_adapter *mpu_adapter;
 static struct i2c_client *mpu_client;
 dev_t devNr = 0;
 static struct class *dev_class;
+static struct cdev mpu_cdev;
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -120,10 +123,37 @@ static int mpu_probe(struct i2c_client *client,
   return 0;
 }
 
-static int mpu_remove(struct i2c_client *client) {
+static int mpu_i2c_remove(struct i2c_client *client) {
   pr_info("Removing\n");
   MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
   return 0;
+}
+
+static int mpu_open(struct inode *inode, struct file *file) {
+  pr_info("Opened fd");
+  return 0;
+}
+static int mpu_release(struct inode *inode, struct file *file) {
+  pr_info("Closed fd");
+  return 0;
+}
+
+static ssize_t mpu_read(struct file *filp, char __user *buf, size_t len,
+                        loff_t *off) {
+  int ret;
+  ret = MPU_Burst_Read(0x75, len, buf);
+  return ret;
+}
+
+static ssize_t mpu_write(struct file *filp, const char *buf, size_t len,
+                         loff_t *off) {
+  int ret;
+  if (len > 2) {
+    pr_err("Too many fields written: only two permitted (reg, value)");
+    return -1;
+  }
+  ret = MPU_Write_Reg(buf[0], buf[1]);
+  return ret;
 }
 
 static struct i2c_driver mpu_driver = {
@@ -132,14 +162,28 @@ static struct i2c_driver mpu_driver = {
     .owner = THIS_MODULE,
   },
   .probe = mpu_probe,
-  .remove = mpu_remove,
+  .remove = mpu_i2c_remove,
   .id_table = mpu_id,
+};
+
+static struct file_operations mpu_fops = {
+  .owner = THIS_MODULE,
+  .open = mpu_open,
+  .read = mpu_read,
+  .write = mpu_write,
+  .release = mpu_release
 };
 
 static int __init mpu_init(void) {
   if (alloc_chrdev_region(&devNr, 0, 1, MPU_NAME) < 0) {
     pr_err("Failed to allocate chr dev number");
     return -1;
+  }
+
+  cdev_init(&mpu_cdev, &mpu_fops);
+  if (cdev_add(&mpu_cdev, devNr, 1) < 0) {
+    pr_err("Could not add cdev.");
+    goto r_class;
   }
 
   dev_class = class_create(THIS_MODULE, "mpu_class");
