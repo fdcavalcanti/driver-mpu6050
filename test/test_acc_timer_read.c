@@ -8,47 +8,24 @@
 
 #define SENSITIVIY 16384.0
 
-char device[] = "/dev/mpu6050";
-int16_t AccX, AccY, AccZ;
-float outX, outY, outZ;
+char device[] = "/sys/fs/mpu6050/xyz_data";
 
 int main(void) {
-  int fd;
-  int i, ii;
-  int8_t test_buf[6] = {0};
+  int i;
+  int test_buf[3];
 
   /* Test opening the device */
-  fd = open(device, O_RDWR);
-  if (fd < 0) {
+  FILE *fd = fopen(device, "r");
+  if (FILE == NULL) {
     printf("Failed opening device: %s\n", strerror(errno));
   } else {
     printf("Device opened.\n");
   }
 
-  for (i = 0; i < 10; i++) {
-    int ret;
-    /* Test reading from device */
-    ret = read(fd, &test_buf[0], 6);
-    if (ret < 0) {
-      printf("Failed reading from device: %s\n", strerror(errno));
-    } else {
-      for (ii = 0; ii < 6; ii++) {
-        printf("0x%X ", (unsigned char)test_buf[ii]);
-      }
-      printf("\n");
-      AccX = (test_buf[0] << 8) + test_buf[1];
-      AccY = (test_buf[2] << 8) + test_buf[3];
-      AccZ = (test_buf[4] << 8) + test_buf[5];
-      outX = AccX / SENSITIVIY;
-      outY = AccY / SENSITIVIY;
-      outZ = AccZ / SENSITIVIY;
-      printf("AccX: %d outX: %f\n", AccX, outX);
-      printf("AccY: %d outX: %f\n", AccY, outY);
-      printf("AccZ: %d outX: %f\n", AccZ, outZ);
-    }
-    printf("\n");
-    sleep(1);
-  }
-  close(fd);
+  fscanf(fd, "%d %d %d", &test_buf[0], &test_buf[1], &test_buf[2]);
+  for (i = 0; i < 3; i++)
+    printf("%d\n", test_buf[i]);
+
+  fclose(fd);
   return 0;
 }

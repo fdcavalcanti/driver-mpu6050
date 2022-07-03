@@ -29,9 +29,9 @@ static struct cdev mpu_cdev;
 struct kobject *kobj_ref;
 
 struct xyz_data {
-  float x;
-  float y;
-  float z;
+  int16_t x;
+  int16_t y;
+  int16_t z;
 };
 
 struct xyz_data acc_read;
@@ -132,9 +132,11 @@ ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
   unsigned char test_buf[6];
   char output_buf[20];
   MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
-  snprintf(output_buf, sizeof(output_buf), "%X %X\n%X %X\n%X %X\n",
-           test_buf[0], test_buf[1], test_buf[2], test_buf[3], test_buf[4],
-           test_buf[5]);
+  acc_read.x = (test_buf[0] << 8) + test_buf[1];
+  acc_read.y = (test_buf[2] << 8) + test_buf[3];
+  acc_read.z = (test_buf[4] << 8) + test_buf[5];
+  snprintf(output_buf, sizeof(output_buf), "%d %d %d", acc_read.x,
+           acc_read.y, acc_read.z);
   return snprintf(buf, sizeof(output_buf), "%s", output_buf);
 }
 
@@ -167,7 +169,7 @@ static int mpu_probe(struct i2c_client *client,
 
 static int mpu_i2c_remove(struct i2c_client *client) {
   pr_info("Removing\n");
-  // MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
+  MPU_Write_Reg(PWR_MGMT_ADDR, 0x80);
   return 0;
 }
 

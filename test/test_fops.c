@@ -9,6 +9,7 @@ char device[] = "/dev/mpu6050";
 int main(void) {
   int fd;
   int ret = -1;
+  int aux = 1;
   unsigned char test_buf[8];
 
   /* Test opening the device */
@@ -18,18 +19,22 @@ int main(void) {
   else
     printf("Device opened.\n");
 
-  /* Test reading from device */
-  ret = read(fd, &test_buf[0], 6);
+  /* Test reading from device
+   * Expecting 0x68 (who_am_i).
+   */
+  ret = read(fd, &test_buf[0], aux);
   if (ret < 0) {
     printf("Failed reading from device: %s\n", strerror(errno));
   } else {
-    int i;
-    printf("Read ok.\n");
-    for (i = 0; i < 6; i++) printf("Buf %d: 0x%X\n", i, test_buf[i]);
+    if (test_buf[0] == 0x68) {
+      printf("Read ok: address is 0x%X\n", test_buf[0]);
+    }
   }
 
-  /* Test writing to device */
-  ret = write(fd, &test_buf[0], 1);
+  // Test writing to device
+  test_buf[0] = 0x1A;
+  test_buf[1] = 0x00;
+  ret = write(fd, test_buf, 2);
   if (ret < 0)
     printf("Failed writing to device: %s\n", strerror(errno));
   else
