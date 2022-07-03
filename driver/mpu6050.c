@@ -7,6 +7,7 @@
 #include <linux/module.h>
 
 #define MPU_NAME "mpu6050"
+#define MEM_SIZE 1024
 #define MPU_ADDR 0x68
 #define WHO_AM_I_ADDR 0x75
 #define PWR_MGMT_ADDR 0x6B      // Power Management Register
@@ -27,6 +28,7 @@ dev_t devNr = 0;
 static struct class *dev_class;
 static struct cdev mpu_cdev;
 struct kobject *kobj_ref;
+unsigned char *kernel_buffer;
 
 struct xyz_data {
   int16_t x;
@@ -46,6 +48,12 @@ struct kobj_attribute mpu_acc_attr = __ATTR(xyz_data, 0660, sysfs_acc_show,
                                             NULL);
 struct kobj_attribute fifo_count_attr = __ATTR(fifo_count, 0660,
                                                sysfs_fifo_count_read, NULL);
+
+static struct attribute *dev_attrs[] = {
+  &mpu_acc_attr.attr,
+  &fifo_count_attr.attr,
+  NULL,
+};
 
 /**
  * MPU_Write_Reg() - Writes to a register.
@@ -130,14 +138,14 @@ ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
   unsigned char test_buf[6];
-  char output_buf[20];
+  char output_data[20];
   MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
   acc_read.x = (test_buf[0] << 8) + test_buf[1];
   acc_read.y = (test_buf[2] << 8) + test_buf[3];
   acc_read.z = (test_buf[4] << 8) + test_buf[5];
-  snprintf(output_buf, sizeof(output_buf), "%d %d %d", acc_read.x,
+  snprintf(output_data, sizeof(output_data), "%d %d %d", acc_read.x,
            acc_read.y, acc_read.z);
-  return snprintf(buf, sizeof(output_buf), "%s", output_buf);
+  return snprintf(buf, sizeof(output_data), "%s", output_data);
 }
 
 static struct i2c_board_info mpu_board_info = {
@@ -244,11 +252,11 @@ static int __init mpu_init(void) {
   }
 
   kobj_ref = kobject_create_and_add(MPU_NAME, fs_kobj);
-  if (sysfs_create_file(kobj_ref, &mpu_acc_attr.attr) < 0) {
+  if (sysfs_create_file(kobj_ref, dev_attrs[0]) < 0) {
     pr_err("Failed to create kobject!");
     goto r_sysfs;
   }
-  if (sysfs_create_file(kobj_ref, &fifo_count_attr.attr) < 0) {
+  if (sysfs_create_file(kobj_ref, dev_attrs[1]) < 0) {
     pr_err("Failed to create kobject!");
     goto r_sysfs;
   }
@@ -261,6 +269,12 @@ static int __init mpu_init(void) {
     }
   }
   i2c_put_adapter(mpu_adapter);
+
+  if ((kernel_buffer = kmalloc(MEM_SIZE, GFP_KERNEL)) == 0) {
+    pr_err("Cannot allocate memory in kernel\n");
+    goto r_device;
+  }
+
   return 0;
 
 r_sysfs:
@@ -274,9 +288,10 @@ r_class:
 }
 
 static void __exit mpu_exit(void) {
+  kfree(kernel_buffer);
   kobject_put(kobj_ref);
-  sysfs_remove_file(kernel_kobj, &mpu_acc_attr.attr);
-  sysfs_remove_file(kernel_kobj, &fifo_count_attr.attr);
+  sysfs_remove_file(kernel_kobj, dev_attrs[0]);
+  sysfs_remove_file(kernel_kobj, dev_attrs[1]);
   device_destroy(dev_class, devNr);
   class_destroy(dev_class);
   unregister_chrdev_region(devNr, 1);
