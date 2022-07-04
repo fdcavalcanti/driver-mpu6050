@@ -6,7 +6,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#define SENSITIVIY 16384.0
+#define SENSITIVIY 8192.0
 
 char device[] = "/sys/fs/mpu6050/xyz_data";
 
@@ -16,15 +16,16 @@ int main(void) {
 
   /* Test opening the device */
   FILE *fd = fopen(device, "r");
-  if (FILE == NULL) {
+  if (fd == NULL) {
     printf("Failed opening device: %s\n", strerror(errno));
-  } else {
-    printf("Device opened.\n");
   }
 
   fscanf(fd, "%d %d %d", &test_buf[0], &test_buf[1], &test_buf[2]);
-  for (i = 0; i < 3; i++)
-    printf("%d\n", test_buf[i]);
+  for (i = 0; i < 3; i++) {
+    float acc;
+    acc = test_buf[i]/SENSITIVIY;
+    printf("%f\n", acc);
+  }
 
   fclose(fd);
   return 0;
