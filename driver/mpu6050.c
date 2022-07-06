@@ -22,6 +22,8 @@
 #define SMPRT_DIV 0x19          // divider from the gyroscope output rate
                                 // used to generate the Sample Rate
 
+const uint32_t sensitivity_afssel[4] = {16384, 8192, 4096, 2048};
+
 static int I2C_BUS = 1;
 static struct i2c_adapter *mpu_adapter;
 static struct i2c_client *mpu_client;
@@ -37,8 +39,13 @@ typedef struct xyz_data {
   int16_t z;
 }xyz_data;
 
+typedef struct mpu6050 {
+  uint32_t sensitivity;
+}mpu6050;
+
 #define READ_ACCELEROMETER _IOR('a', 'a', struct xyz_data)
 
+static mpu6050 mpu_info;
 struct xyz_data acc_read;
 unsigned int fifo_count;
 
@@ -130,10 +137,20 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
   return ret;
 }
 
+void read_accelerometer_axis(struct xyz_data *acc) {
+  unsigned char test_buf[6];
+  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
+  acc->x = (test_buf[0] << 8) + test_buf[1];
+  acc->y = (test_buf[2] << 8) + test_buf[3];
+  acc->z = (test_buf[4] << 8) + test_buf[5];
+}
+
 static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
   switch (cmd) {
   case READ_ACCELEROMETER:
     pr_info("Called READ_ACCEELEROMETER ioctl");
+    read_accelerometer_axis(&acc_read);
+    copy_to_user((xyz_data*)arg, &acc_read, sizeof(xyz_data));
     break;
   default:
     pr_info("IOCTL command defaulted");
@@ -152,12 +169,8 @@ ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
 
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
-  unsigned char test_buf[6];
-  char output_data[20];
-  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
-  acc_read.x = (test_buf[0] << 8) + test_buf[1];
-  acc_read.y = (test_buf[2] << 8) + test_buf[3];
-  acc_read.z = (test_buf[4] << 8) + test_buf[5];
+  unsigned char output_data[20];
+  read_accelerometer_axis(&acc_read);
   snprintf(output_data, sizeof(output_data), "%d %d %d", acc_read.x,
            acc_read.y, acc_read.z);
   return snprintf(buf, sizeof(output_data), "%s", output_data);
@@ -175,6 +188,7 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 static int mpu_probe(struct i2c_client *client,
                      const struct i2c_device_id *id) {
   unsigned char who_am_i;
+  uint8_t AFS_SEL = 0x01;
   pr_info("Initializing driver");
   MPU_Read_Reg(WHO_AM_I_ADDR, &who_am_i);
   if (who_am_i != MPU_ADDR) {
@@ -182,7 +196,9 @@ static int mpu_probe(struct i2c_client *client,
   } else {
     pr_info("Found device on: 0x%X", who_am_i);
   }
+
   MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);
+  mpu_info.sensitivity = sensitivity_afssel[AFS_SEL];
   MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
   MPU_Write_Reg(FIFO_EN, 0x08);
   MPU_Write_Reg(SMPRT_DIV, 0x4F);
