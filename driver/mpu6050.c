@@ -3,6 +3,7 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
+#include <linux/ioctl.h>
 #include <linux/kobject.h>
 #include <linux/module.h>
 
@@ -30,11 +31,13 @@ static struct cdev mpu_cdev;
 struct kobject *kobj_ref;
 unsigned char *kernel_buffer;
 
-struct xyz_data {
+typedef struct xyz_data {
   int16_t x;
   int16_t y;
   int16_t z;
-};
+}xyz_data;
+
+#define READ_ACCELEROMETER _IOR('a', 'a', struct xyz_data)
 
 struct xyz_data acc_read;
 unsigned int fifo_count;
@@ -125,6 +128,18 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
     pr_err("Erro burst reading register 0x%X\n", start_reg);
   }
   return ret;
+}
+
+static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
+  switch (cmd) {
+  case READ_ACCELEROMETER:
+    pr_info("Called READ_ACCEELEROMETER ioctl");
+    break;
+  default:
+    pr_info("IOCTL command defaulted");
+    break;
+  }
+  return 0;
 }
 
 ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
@@ -225,7 +240,8 @@ static struct file_operations mpu_fops = {
   .open = mpu_open,
   .read = mpu_read,
   .write = mpu_write,
-  .release = mpu_release
+  .release = mpu_release,
+  .unlocked_ioctl = mpu_ioctl,
 };
 
 static int __init mpu_init(void) {
