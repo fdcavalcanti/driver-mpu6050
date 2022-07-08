@@ -12,6 +12,7 @@
 #define MEM_SIZE 1024
 #define MPU_ADDR 0x68
 #define WHO_AM_I_ADDR 0x75
+#define USER_CTRL 0x6A          // User control register
 #define PWR_MGMT_ADDR 0x6B      // Power Management Register
 #define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
 #define TEMP_ADDR 0x41          // Temperature sensor address
@@ -127,19 +128,32 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
 }
 
 void read_accelerometer_axis(struct xyz_data *acc) {
-  unsigned char test_buf[6];
-  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
+  unsigned int test_buf[6];
+  MPU_Burst_Read(FIFO_R_W, 6, (unsigned char*)test_buf);
   acc->x = (test_buf[0] << 8) + test_buf[1];
   acc->y = (test_buf[2] << 8) + test_buf[3];
   acc->z = (test_buf[4] << 8) + test_buf[5];
 }
 
+void read_fifo_count(int *count) {
+  unsigned char test_buf[2];
+  MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
+  *count = (test_buf[0] << 8) + test_buf[1];
+}
+
 static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
+  int count;
   switch (cmd) {
   case READ_ACCELEROMETER:
-    read_accelerometer_axis(&acc_read);
-    if (copy_to_user((xyz_data*)arg, &acc_read, sizeof(xyz_data)) != 0) {
-      pr_err("Failed READ_ACCELEROMETER");
+    read_fifo_count(&count);
+    if (count > 10) {
+      read_accelerometer_axis(&acc_read);
+      if (copy_to_user((xyz_data*)arg, &acc_read, sizeof(xyz_data)) != 0) {
+        pr_err("Failed READ_ACCELEROMETER");
+      }
+    }
+    else {
+      pr_err("Not enough samples in FIFO: %d", count);
     }
     break;
   case MPU_INFO:
@@ -194,6 +208,7 @@ static int mpu_probe(struct i2c_client *client,
 
   MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);
   mpu_info.sensitivity = sensitivity_afssel[AFS_SEL];
+  MPU_Write_Reg(USER_CTRL, 0x68);
   MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
   MPU_Write_Reg(FIFO_EN, 0x08);
   MPU_Write_Reg(SMPRT_DIV, 0x4F);
