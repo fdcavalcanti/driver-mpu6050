@@ -24,11 +24,12 @@ int main(void) {
     printf("Failed opening device: %s\n", strerror(errno));
   }
 
-  ioctl(fd, READ_ACCELEROMETER, &acc_data);
-  printf("AccX: %d\n", acc_data.x);
-  printf("AccY: %d\n", acc_data.y);
-  printf("AccZ: %d\n", acc_data.z);
-
+  for (int i = 0; i < 5; i++) {
+    ioctl(fd, READ_ACCELEROMETER, &acc_data);
+    printf("AccX: %d\n", acc_data.x);
+    printf("AccY: %d\n", acc_data.y);
+    printf("AccZ: %d\n", acc_data.z);
+  }
   close(fd);
   return 0;
 }
