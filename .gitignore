@@ -11,9 +11,12 @@
 modules.order
 modules.builtin
 Module.symvers
+defaults.cfg
 
 # git files that we don't want to ignore even it they are dot-files
 #
+!*.c
 !.gitignore
 !.gitmodules
+!.pre-commit-config.yaml
 !.mailmap

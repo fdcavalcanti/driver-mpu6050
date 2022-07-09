@@ -1,54 +1,35 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <string.h>
+// 2022 Filipe Cavalcanti
 #include <errno.h>
 #include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
-#define SENSITIVIY 16384.
+#define SENSITIVIY 8192.0
 
-char device[] = "/dev/mpu6050";
-int16_t AccX, AccY, AccZ;
-float outX, outY, outZ;
-
+char device[] = "/sys/fs/mpu6050/xyz_data";
 
 int main(void) {
-    int fd;
-    int i, ii;
-    int ret = -1;
-    int8_t test_buf[6] = {0};
+  int i, ii;
+  int test_buf[3];
 
-    /* Test opening the device */
-    fd = open(device, O_RDWR);
-    if (fd < 0)
-        printf("Failed opening device: %s\n", strerror(errno));
-    else
-        printf("Device opened.\n");
+  /* Test opening the device */
+  FILE *fd = fopen(device, "r");
+  if (fd == NULL) {
+    printf("Failed opening device: %s\n", strerror(errno));
+  }
 
-    for (i=0; i<10; i++) {
-        /* Test reading from device */
-        ret = read(fd, &test_buf[0], 6);
-        if (ret < 0)
-            printf("Failed reading from device: %s\n", strerror(errno));
-        else {
-            for (ii=0; ii<6; ii++) {
-                printf("0x%X ", (unsigned char)test_buf[ii]);
-            }
-            printf("\n");
-            AccX = (test_buf[0] << 8) + test_buf[1];
-            AccY = (test_buf[2] << 8) + test_buf[3];
-            AccZ = (test_buf[4] << 8) + test_buf[5];
-            outX = AccX / SENSITIVIY;
-            outY = AccY / SENSITIVIY;
-            outZ = AccZ / SENSITIVIY;
-            printf("AccX: %d outX: %f\n", AccX, outX);
-            printf("AccY: %d outX: %f\n", AccY, outY);
-            printf("AccZ: %d outX: %f\n", AccZ, outZ);
-        }
-        printf("\n");
-        sleep(1);
+  for (ii = 0; ii < 5; ii++) {
+    fscanf(fd, "%d %d %d", &test_buf[0], &test_buf[1], &test_buf[2]);
+    for (i = 0; i < 3; i++) {
+      float acc;
+      acc = test_buf[i]/SENSITIVIY;
+      printf("%f\n", acc);
     }
+    usleep(10000);
+  }
 
-    close(fd);
-    return 0;
+  fclose(fd);
+  return 0;
 }
