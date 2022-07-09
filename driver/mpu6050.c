@@ -3,13 +3,16 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/i2c.h>
+#include <linux/ioctl.h>
 #include <linux/kobject.h>
 #include <linux/module.h>
+#include "mpu6050.h"
 
 #define MPU_NAME "mpu6050"
 #define MEM_SIZE 1024
 #define MPU_ADDR 0x68
 #define WHO_AM_I_ADDR 0x75
+#define USER_CTRL 0x6A          // User control register
 #define PWR_MGMT_ADDR 0x6B      // Power Management Register
 #define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
 #define TEMP_ADDR 0x41          // Temperature sensor address
@@ -21,6 +24,8 @@
 #define SMPRT_DIV 0x19          // divider from the gyroscope output rate
                                 // used to generate the Sample Rate
 
+const uint32_t sensitivity_afssel[4] = {16384, 8192, 4096, 2048};
+
 static int I2C_BUS = 1;
 static struct i2c_adapter *mpu_adapter;
 static struct i2c_client *mpu_client;
@@ -30,12 +35,7 @@ static struct cdev mpu_cdev;
 struct kobject *kobj_ref;
 unsigned char *kernel_buffer;
 
-struct xyz_data {
-  int16_t x;
-  int16_t y;
-  int16_t z;
-};
-
+static mpu6050 mpu_info;
 struct xyz_data acc_read;
 unsigned int fifo_count;
 
@@ -127,22 +127,63 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
   return ret;
 }
 
+void read_accelerometer_axis(struct xyz_data *acc) {
+  unsigned char test_buf[6];
+  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
+  acc->x = (test_buf[0] << 8) + test_buf[1];
+  acc->y = (test_buf[2] << 8) + test_buf[3];
+  acc->z = (test_buf[4] << 8) + test_buf[5];
+}
+
+void read_fifo_count(int *count) {
+  unsigned char test_buf[2];
+  MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
+  *count = (test_buf[0] << 8) + test_buf[1];
+}
+
+static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
+  int count;
+  switch (cmd) {
+  case READ_ACCELEROMETER:
+    read_fifo_count(&count);
+    if (count > 10) {
+      read_accelerometer_axis(&acc_read);
+      if (copy_to_user((struct xyz_data*)arg, &acc_read,
+                       sizeof(xyz_data)) != 0) {
+        pr_err("Failed READ_ACCELEROMETER");
+      }
+    } else {
+      pr_err("Not enough samples in FIFO: %d", count);
+    }
+    break;
+  case MPU_INFO:
+    if (copy_to_user((struct mpu6050*)arg, &mpu_info, sizeof(mpu6050)) != 0) {
+      pr_err("Failed MPU_INFO");
+      break;
+    } else {
+      break;
+    }
+  default:
+    pr_info("IOCTL command defaulted");
+    break;
+  }
+  return 0;
+}
+
 ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
                               char *buf) {
   unsigned char test_buf[2];
+  char outbuf[10];
   MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
   fifo_count = (test_buf[0] << 8) + test_buf[1];
-  return snprintf(buf, sizeof(fifo_count), "%X", fifo_count);
+  snprintf(outbuf, sizeof(outbuf), "0x%X", fifo_count);
+  return snprintf(buf, sizeof(outbuf), "%s", outbuf);
 }
 
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
-  unsigned char test_buf[6];
-  char output_data[20];
-  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
-  acc_read.x = (test_buf[0] << 8) + test_buf[1];
-  acc_read.y = (test_buf[2] << 8) + test_buf[3];
-  acc_read.z = (test_buf[4] << 8) + test_buf[5];
+  unsigned char output_data[20];
+  read_accelerometer_axis(&acc_read);
   snprintf(output_data, sizeof(output_data), "%d %d %d", acc_read.x,
            acc_read.y, acc_read.z);
   return snprintf(buf, sizeof(output_data), "%s", output_data);
@@ -160,6 +201,7 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 static int mpu_probe(struct i2c_client *client,
                      const struct i2c_device_id *id) {
   unsigned char who_am_i;
+  uint8_t AFS_SEL = 0x01;
   pr_info("Initializing driver");
   MPU_Read_Reg(WHO_AM_I_ADDR, &who_am_i);
   if (who_am_i != MPU_ADDR) {
@@ -167,7 +209,10 @@ static int mpu_probe(struct i2c_client *client,
   } else {
     pr_info("Found device on: 0x%X", who_am_i);
   }
+
   MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);
+  mpu_info.sensitivity = sensitivity_afssel[AFS_SEL];
+  MPU_Write_Reg(USER_CTRL, 0x68);
   MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
   MPU_Write_Reg(FIFO_EN, 0x08);
   MPU_Write_Reg(SMPRT_DIV, 0x4F);
@@ -225,7 +270,8 @@ static struct file_operations mpu_fops = {
   .open = mpu_open,
   .read = mpu_read,
   .write = mpu_write,
-  .release = mpu_release
+  .release = mpu_release,
+  .unlocked_ioctl = mpu_ioctl,
 };
 
 static int __init mpu_init(void) {
@@ -299,9 +345,6 @@ static void __exit mpu_exit(void) {
   i2c_del_driver(&mpu_driver);
   pr_info("Driver removed\n");
 }
-
-// module_param(MPU_ADDR, int, S_IRUSR | S_IWUSR);
-// MODULE_PARM_DESC(MPU_ADDR, "MPU I2C address.");
 
 module_init(mpu_init);
 module_exit(mpu_exit);
