@@ -10,6 +10,7 @@
 
 
 char device[] = "/dev/mpu6050";
+float accx, accy, accz, sens;
 
 int main(void) {
   xyz_data acc_data;
@@ -21,12 +22,18 @@ int main(void) {
   }
 
   ioctl(fd, MPU_INFO, &mpu_data);
-  printf("Sensitivity: %d\n", mpu_data.sensitivity);
+  sens = mpu_data.sensitivity;
+  printf("Sensitivity: %f\n", sens);
+
   for (int i = 0; i < 3; i++) {
     ioctl(fd, READ_ACCELEROMETER, &acc_data);
-    printf("AccX: %f\n", (float)acc_data.x/(float)mpu_data.sensitivity);
-    printf("AccY: %f\n", (float)acc_data.y/(float)mpu_data.sensitivity);
-    printf("AccZ: %f\n", (float)acc_data.z/(float)mpu_data.sensitivity);
+    accx = acc_data.x/sens;
+    accy = acc_data.y/sens;
+    accz = acc_data.z/sens;
+    printf("AccX: %f\n", accx);
+    printf("AccY: %f\n", accy);
+    printf("AccZ: %f\n", accz);
+    usleep(10000);
   }
   close(fd);
   return 0;

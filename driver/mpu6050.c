@@ -128,8 +128,8 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
 }
 
 void read_accelerometer_axis(struct xyz_data *acc) {
-  unsigned int test_buf[6];
-  MPU_Burst_Read(FIFO_R_W, 6, (unsigned char*)test_buf);
+  unsigned char test_buf[6];
+  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
   acc->x = (test_buf[0] << 8) + test_buf[1];
   acc->y = (test_buf[2] << 8) + test_buf[3];
   acc->z = (test_buf[4] << 8) + test_buf[5];
@@ -148,19 +148,21 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
     read_fifo_count(&count);
     if (count > 10) {
       read_accelerometer_axis(&acc_read);
-      if (copy_to_user((xyz_data*)arg, &acc_read, sizeof(xyz_data)) != 0) {
+      if (copy_to_user((struct xyz_data*)arg, &acc_read,
+                       sizeof(xyz_data)) != 0) {
         pr_err("Failed READ_ACCELEROMETER");
       }
-    }
-    else {
+    } else {
       pr_err("Not enough samples in FIFO: %d", count);
     }
     break;
   case MPU_INFO:
-    if (copy_to_user((mpu6050*)arg, &mpu_info, sizeof(mpu6050)) != 0) {
-      pr_err("Failed READ_SENSITIVITY");
+    if (copy_to_user((struct mpu6050*)arg, &mpu_info, sizeof(mpu6050)) != 0) {
+      pr_err("Failed MPU_INFO");
+      break;
+    } else {
+      break;
     }
-    break;
   default:
     pr_info("IOCTL command defaulted");
     break;
@@ -171,9 +173,11 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
 ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
                               char *buf) {
   unsigned char test_buf[2];
+  char outbuf[10];
   MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
   fifo_count = (test_buf[0] << 8) + test_buf[1];
-  return snprintf(buf, sizeof(fifo_count), "%X", fifo_count);
+  snprintf(outbuf, sizeof(outbuf), "0x%X", fifo_count);
+  return snprintf(buf, sizeof(outbuf), "%s", outbuf);
 }
 
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
@@ -341,9 +345,6 @@ static void __exit mpu_exit(void) {
   i2c_del_driver(&mpu_driver);
   pr_info("Driver removed\n");
 }
-
-// module_param(MPU_ADDR, int, S_IRUSR | S_IWUSR);
-// MODULE_PARM_DESC(MPU_ADDR, "MPU I2C address.");
 
 module_init(mpu_init);
 module_exit(mpu_exit);
