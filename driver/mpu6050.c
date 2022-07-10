@@ -128,7 +128,13 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
   return ret;
 }
 
-void read_accelerometer_axis(struct xyz_data *acc) {
+void mpu_read_temperature(int16_t *temp) {
+  unsigned char buf[2];
+  MPU_Burst_Read(TEMP_ADDR, 2, buf);
+  *temp = (buf[0] << 8) + buf[1];
+}
+
+void mpu_read_accelerometer_axis(struct xyz_data *acc) {
   unsigned char test_buf[6];
   MPU_Burst_Read(FIFO_R_W, 6, test_buf);
   acc->x = (test_buf[0] << 8) + test_buf[1];
@@ -136,27 +142,29 @@ void read_accelerometer_axis(struct xyz_data *acc) {
   acc->z = (test_buf[4] << 8) + test_buf[5];
 }
 
-void read_fifo_count(int *count) {
+void mpu_read_fifo_count(int *count) {
   unsigned char test_buf[2];
   MPU_Burst_Read(FIFO_COUNT_H, 2, test_buf);
   *count = (test_buf[0] << 8) + test_buf[1];
 }
 
 static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
-  int count;
+  int aux;
+  int16_t tmp;
   switch (cmd) {
   case READ_ACCELEROMETER:
-    read_fifo_count(&count);
-    if (count > 10) {
-      read_accelerometer_axis(&acc_read);
+    mpu_read_fifo_count(&aux);
+    if (aux > 10) {
+      mpu_read_accelerometer_axis(&acc_read);
       if (copy_to_user((struct xyz_data*)arg, &acc_read,
                        sizeof(xyz_data)) != 0) {
         pr_err("Failed READ_ACCELEROMETER");
       }
     } else {
-      pr_err("Not enough samples in FIFO: %d", count);
+      pr_err("Not enough samples in FIFO: %d", aux);
     }
     break;
+
   case MPU_INFO:
     if (copy_to_user((struct mpu6050*)arg, &mpu_info, sizeof(mpu6050)) != 0) {
       pr_err("Failed MPU_INFO");
@@ -164,6 +172,15 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
     } else {
       break;
     }
+
+  case READ_TEMPERATURE:
+    mpu_read_temperature(&tmp);
+    if (copy_to_user((int16_t*)arg, &tmp, sizeof(tmp)) != 0) {
+      pr_err("Failed READ_TEMPERATURE");
+      break;
+    }
+    break;
+
   default:
     pr_info("IOCTL command defaulted");
     break;
@@ -184,7 +201,7 @@ ssize_t sysfs_fifo_count_read(struct kobject *kobj, struct kobj_attribute *attr,
 ssize_t sysfs_acc_show(struct kobject *kobj, struct kobj_attribute *attr,
                        char *buf) {
   unsigned char output_data[20];
-  read_accelerometer_axis(&acc_read);
+  mpu_read_accelerometer_axis(&acc_read);
   snprintf(output_data, sizeof(output_data), "%d %d %d", acc_read.x,
            acc_read.y, acc_read.z);
   return snprintf(buf, sizeof(output_data), "%s", output_data);
@@ -237,15 +254,6 @@ static int mpu_i2c_remove(struct i2c_client *client) {
   return 0;
 }
 
-static int mpu_open(struct inode *inode, struct file *file) {
-  pr_info("Opened fd");
-  return 0;
-}
-static int mpu_release(struct inode *inode, struct file *file) {
-  pr_info("Closed fd");
-  return 0;
-}
-
 static ssize_t mpu_read(struct file *filp, char __user *buf, size_t len,
                         loff_t *off) {
   int ret;
@@ -278,11 +286,9 @@ static struct i2c_driver mpu_driver = {
 
 static struct file_operations mpu_fops = {
   .owner = THIS_MODULE,
-  .open = mpu_open,
-  .read = mpu_read,
   .write = mpu_write,
-  .release = mpu_release,
   .unlocked_ioctl = mpu_ioctl,
+  .read = mpu_read,
 };
 
 static int __init mpu_init(void) {

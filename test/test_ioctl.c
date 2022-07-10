@@ -10,6 +10,7 @@
 
 char device[] = "/dev/mpu6050";
 float accx, accy, accz, sens;
+int16_t temperature;
 
 int main(void) {
   int test_fail = 0;
@@ -20,6 +21,14 @@ int main(void) {
   if (fd < 0) {
     printf("Failed opening device: %s\n", strerror(errno));
     test_fail++;
+  }
+
+  if (ioctl(fd, READ_TEMPERATURE, &temperature) < 0) {
+    printf("Failed IOCTL temp read: %s\n", strerror(errno));
+    test_fail++;
+  } else {
+    printf("Read: %d => Temp in C: %f\n",
+           temperature, (temperature/340)+36.53);
   }
 
   if (ioctl(fd, MPU_INFO, &mpu_data) < 0) {
