@@ -12,6 +12,7 @@
 #define MEM_SIZE 1024
 #define MPU_ADDR 0x68
 #define WHO_AM_I_ADDR 0x75
+#define CONFIG 0x1A             // Configure FSYNC pin and DLPF
 #define USER_CTRL 0x6A          // User control register
 #define PWR_MGMT_ADDR 0x6B      // Power Management Register
 #define ACCEL_CONFIG_ADDR 0x1C  // Accelerometer Configuration (AFSEL)
@@ -129,7 +130,7 @@ static int MPU_Burst_Read(unsigned char start_reg, unsigned int length,
 
 void read_accelerometer_axis(struct xyz_data *acc) {
   unsigned char test_buf[6];
-  MPU_Burst_Read(ACC_XOUT0, 6, test_buf);
+  MPU_Burst_Read(FIFO_R_W, 6, test_buf);
   acc->x = (test_buf[0] << 8) + test_buf[1];
   acc->y = (test_buf[2] << 8) + test_buf[3];
   acc->z = (test_buf[4] << 8) + test_buf[5];
@@ -201,7 +202,7 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 static int mpu_probe(struct i2c_client *client,
                      const struct i2c_device_id *id) {
   unsigned char who_am_i;
-  uint8_t AFS_SEL = 0x01;
+  uint8_t AFS_SEL = ACCEL_CONFIG_AFS_4G;
   pr_info("Initializing driver");
   MPU_Read_Reg(WHO_AM_I_ADDR, &who_am_i);
   if (who_am_i != MPU_ADDR) {
@@ -210,12 +211,22 @@ static int mpu_probe(struct i2c_client *client,
     pr_info("Found device on: 0x%X", who_am_i);
   }
 
-  MPU_Write_Reg(PWR_MGMT_ADDR, 0x01);
-  mpu_info.sensitivity = sensitivity_afssel[AFS_SEL];
-  MPU_Write_Reg(USER_CTRL, 0x68);
-  MPU_Write_Reg(ACCEL_CONFIG_ADDR, 0x08);
-  MPU_Write_Reg(FIFO_EN, 0x08);
-  MPU_Write_Reg(SMPRT_DIV, 0x4F);
+  mpu_info.power_mgmt = PWR_MGMT_CLKSEL_PLL_X;
+  mpu_info.sensitivity = sensitivity_afssel[AFS_SEL >> 3];
+  mpu_info.dlpf = CONFIG_DLPF_CFG_OFF;
+  mpu_info.sample_rate = 150;
+  if ((mpu_info.dlpf & 0x7) == CONFIG_DLPF_CFG_OFF) {
+    mpu_info.sample_rate_divider = (8000/mpu_info.sample_rate) - 1;
+  } else {
+    mpu_info.sample_rate_divider = (1000/mpu_info.sample_rate) - 1;
+  }
+
+  MPU_Write_Reg(PWR_MGMT_ADDR, mpu_info.power_mgmt);
+  MPU_Write_Reg(CONFIG, mpu_info.dlpf);
+  MPU_Write_Reg(USER_CTRL, USER_CTL_FIFO_EN);
+  MPU_Write_Reg(ACCEL_CONFIG_ADDR, AFS_SEL);
+  MPU_Write_Reg(FIFO_EN, FIFO_EN_ACCEL);
+  MPU_Write_Reg(SMPRT_DIV, mpu_info.sample_rate_divider);
   pr_info("Done probing");
   return 0;
 }

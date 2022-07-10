@@ -22,3 +22,5 @@ defaults.cfg
 !.gitmodules
 !.pre-commit-config.yaml
 !.mailmap
+!driver/
+!test/
