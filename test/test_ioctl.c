@@ -8,25 +8,32 @@
 #include <unistd.h>
 #include "../driver/mpu6050.h"
 
-
 char device[] = "/dev/mpu6050";
 float accx, accy, accz, sens;
 
 int main(void) {
+  int test_fail = 0;
   xyz_data acc_data;
   mpu6050 mpu_data;
   /* Test opening the device */
   int fd = open(device, O_RDWR);
   if (fd < 0) {
     printf("Failed opening device: %s\n", strerror(errno));
+    test_fail++;
   }
 
-  ioctl(fd, MPU_INFO, &mpu_data);
+  if (ioctl(fd, MPU_INFO, &mpu_data) < 0) {
+    printf("Failed IOCTL on mpu_info: %s\n", strerror(errno));
+    test_fail++;
+  }
   sens = mpu_data.sensitivity;
   printf("Sensitivity: %f\n", sens);
 
   for (int i = 0; i < 3; i++) {
-    ioctl(fd, READ_ACCELEROMETER, &acc_data);
+    if (ioctl(fd, READ_ACCELEROMETER, &acc_data) < 0) {
+      printf("Failed IOCTL on acc read: %s\n", strerror(errno));
+      test_fail++;
+    }
     accx = acc_data.x/sens;
     accy = acc_data.y/sens;
     accz = acc_data.z/sens;
@@ -36,5 +43,10 @@ int main(void) {
     usleep(10000);
   }
   close(fd);
+  if (test_fail == 0) {
+    printf("No errors found.\n");
+  } else {
+    printf("Got %d errors\n", test_fail);
+  }
   return 0;
 }
