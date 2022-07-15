@@ -11,6 +11,7 @@
 char device[] = "/dev/mpu6050";
 float accx, accy, accz, sens;
 int16_t temperature;
+int sample_rate = 100;
 
 int main(void) {
   int test_fail = 0;
@@ -51,6 +52,15 @@ int main(void) {
     printf("AccZ: %f\n", accz);
     usleep(10000);
   }
+
+  if (ioctl(fd, SET_SAMPLE_RATE, &sample_rate) < 0) {
+    printf("Failed to set sample rate\n");
+    test_fail++;
+  }
+  else {
+    printf("Sample rate set\n");
+  }
+
   close(fd);
   if (test_fail == 0) {
     printf("No errors found.\n");

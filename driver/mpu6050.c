@@ -148,6 +148,26 @@ void mpu_read_fifo_count(int *count) {
   *count = (test_buf[0] << 8) + test_buf[1];
 }
 
+void mpu_set_sample_rate(int sample_rate) {
+  unsigned char buf;
+  if (sample_rate > 1000) {
+    pr_info("Can not set sample rate over 1000 Hz");
+  }
+  mpu_info.sample_rate = sample_rate;
+  if ((mpu_info.dlpf & 0x7) == CONFIG_DLPF_CFG_OFF) {
+    mpu_info.sample_rate_divider = (8000/mpu_info.sample_rate) - 1;
+  } else {
+    mpu_info.sample_rate_divider = (1000/mpu_info.sample_rate) - 1;
+  }
+  MPU_Write_Reg(SMPRT_DIV, mpu_info.sample_rate_divider);
+  MPU_Read_Reg(SMPRT_DIV, &buf);
+  if (buf != mpu_info.sample_rate_divider) {
+    pr_err("Failed to set sample rate. Set SMPRT_DIV %d and got %d", SMPRT_DIV, buf);
+  } else {
+    pr_info("Sample rate div set to %d", mpu_info.sample_rate);
+  }
+}
+
 static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
   int aux;
   int16_t tmp;
@@ -179,6 +199,10 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
       pr_err("Failed READ_TEMPERATURE");
       break;
     }
+    break;
+
+  case SET_SAMPLE_RATE:
+    pr_info("Called set sample rate");
     break;
 
   default:
@@ -232,18 +256,13 @@ static int mpu_probe(struct i2c_client *client,
   mpu_info.sensitivity = sensitivity_afssel[AFS_SEL >> 3];
   mpu_info.dlpf = CONFIG_DLPF_CFG_OFF;
   mpu_info.sample_rate = 150;
-  if ((mpu_info.dlpf & 0x7) == CONFIG_DLPF_CFG_OFF) {
-    mpu_info.sample_rate_divider = (8000/mpu_info.sample_rate) - 1;
-  } else {
-    mpu_info.sample_rate_divider = (1000/mpu_info.sample_rate) - 1;
-  }
 
   MPU_Write_Reg(PWR_MGMT_ADDR, mpu_info.power_mgmt);
   MPU_Write_Reg(CONFIG, mpu_info.dlpf);
   MPU_Write_Reg(USER_CTRL, USER_CTL_FIFO_EN);
   MPU_Write_Reg(ACCEL_CONFIG_ADDR, AFS_SEL);
+  mpu_set_sample_rate(mpu_info.sample_rate);
   MPU_Write_Reg(FIFO_EN, FIFO_EN_ACCEL);
-  MPU_Write_Reg(SMPRT_DIV, mpu_info.sample_rate_divider);
   pr_info("Done probing");
   return 0;
 }

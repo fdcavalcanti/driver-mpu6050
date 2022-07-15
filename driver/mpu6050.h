@@ -1,6 +1,7 @@
 #ifndef DRIVER_MPU6050_H_
 #define DRIVER_MPU6050_H_
 
+// PWR_MGMT_1
 #define PWR_MGMT_CLKSEL_INT 0x0
 #define PWR_MGMT_CLKSEL_PLL_X 0x1
 #define PWR_MGMT_CLKSEL_PLL_Y 0x2
@@ -45,5 +46,6 @@ typedef struct mpu6050 {
 #define READ_ACCELEROMETER _IOR('a', 'a', struct xyz_data)
 #define MPU_INFO _IOR('a', 'b', struct mpu6050)
 #define READ_TEMPERATURE _IOR('a', 'c', struct xyz_data)
+#define SET_SAMPLE_RATE _IOW('a', 'd', int*)
 
 #endif  // DRIVER_MPU6050_H_
