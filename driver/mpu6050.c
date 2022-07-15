@@ -162,9 +162,9 @@ void mpu_set_sample_rate(int sample_rate) {
   MPU_Write_Reg(SMPRT_DIV, mpu_info.sample_rate_divider);
   MPU_Read_Reg(SMPRT_DIV, &buf);
   if (buf != mpu_info.sample_rate_divider) {
-    pr_err("Failed to set sample rate. Set SMPRT_DIV %d and got %d", SMPRT_DIV, buf);
+    pr_err("Failed to set sample rate. SMPRT_DIV: %d, got %d", SMPRT_DIV, buf);
   } else {
-    pr_info("Sample rate div set to %d", mpu_info.sample_rate);
+    pr_info("Sample rate set to %d Hz", mpu_info.sample_rate);
   }
 }
 
@@ -202,7 +202,12 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
     break;
 
   case SET_SAMPLE_RATE:
-    pr_info("Called set sample rate");
+    if (copy_from_user(&aux, (int*)arg, sizeof(aux))) {
+      pr_err("Failed to IOCTL sample rate");
+    } else {
+      mpu_info.sample_rate = aux;
+      mpu_set_sample_rate(mpu_info.sample_rate);
+    }
     break;
 
   default:
