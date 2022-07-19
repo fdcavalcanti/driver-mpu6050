@@ -7,4 +7,4 @@ repos:
         args: [--no-backup, --set=indent_with_tabs=0]
       - id: cppcheck
       - id: cpplint
-        args: ["--filter=-legal/copyright,-build/include_subdir"]
+        args: ["--filter=-legal/copyright,-readability/casting,-build/include_subdir"]

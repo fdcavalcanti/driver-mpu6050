@@ -173,15 +173,9 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
   int16_t tmp;
   switch (cmd) {
   case READ_ACCELEROMETER:
-    mpu_read_fifo_count(&aux);
-    if (aux > 10) {
-      mpu_read_accelerometer_axis(&acc_read);
-      if (copy_to_user((struct xyz_data*)arg, &acc_read,
-                       sizeof(xyz_data)) != 0) {
-        pr_err("Failed READ_ACCELEROMETER");
-      }
-    } else {
-      pr_err("Not enough samples in FIFO: %d", aux);
+    mpu_read_accelerometer_axis(&acc_read);
+    if (copy_to_user((struct xyz_data*)arg, &acc_read, sizeof(xyz_data)) != 0) {
+      pr_err("Failed READ_ACCELEROMETER");
     }
     break;
 
@@ -207,6 +201,13 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
     } else {
       mpu_info.sample_rate = aux;
       mpu_set_sample_rate(mpu_info.sample_rate);
+    }
+    break;
+
+  case FIFO_COUNT:
+    mpu_read_fifo_count(&aux);
+    if (copy_to_user((int*)arg, &aux, sizeof(aux)) != 0) {
+      pr_err("Failed to IOCTL fifo count");
     }
     break;
 

@@ -46,6 +46,7 @@ typedef struct mpu6050 {
 #define READ_ACCELEROMETER _IOR('a', 'a', struct xyz_data)
 #define MPU_INFO _IOR('a', 'b', struct mpu6050)
 #define READ_TEMPERATURE _IOR('a', 'c', struct xyz_data)
-#define SET_SAMPLE_RATE _IOW('a', 'd', int*)
+#define FIFO_COUNT _IOR('a', 'd', struct xyz_data)
+#define SET_SAMPLE_RATE _IOW('a', 'e', int*)
 
 #endif  // DRIVER_MPU6050_H_
