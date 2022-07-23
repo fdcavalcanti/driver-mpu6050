@@ -12,6 +12,8 @@ char device[] = "/dev/mpu6050";
 float accx, accy, accz, sens;
 int16_t temperature;
 int sample_rate = 100;
+int afs_sel_values[4] = {ACCEL_CONFIG_AFS_2G, ACCEL_CONFIG_AFS_4G,
+                         ACCEL_CONFIG_AFS_8G, ACCEL_CONFIG_AFS_16G};
 
 int main(void) {
   int test_fail = 0;
@@ -56,9 +58,18 @@ int main(void) {
   if (ioctl(fd, SET_SAMPLE_RATE, &sample_rate) < 0) {
     printf("Failed to set sample rate\n");
     test_fail++;
-  }
-  else {
+  } else {
     printf("Sample rate set\n");
+  }
+
+  for (int i = 0; i < 4; i++) {
+    uint32_t afssel = afs_sel_values[i];
+    if (ioctl(fd, SET_AFS_SEL, &afssel) < 0) {
+      printf("Failed to set sample rate\n");
+      test_fail++;
+    } else {
+      printf("AFS_SEL %d set\n", afs_sel_values[i]);
+    }
   }
 
   close(fd);

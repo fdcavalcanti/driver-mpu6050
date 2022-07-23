@@ -13,10 +13,10 @@
 #define CONFIG_DLPF_CFG_OFF 0x00
 
 // ACCEL_CONFIG 0x1C
-#define ACCEL_CONFIG_AFS_2G 0x0
-#define ACCEL_CONFIG_AFS_4G 0x8
-#define ACCEL_CONFIG_AFS_8G 0x10
-#define ACCEL_CONFIG_AFS_16G 0x18
+enum accel_config {ACCEL_CONFIG_AFS_2G = 0x0,
+                   ACCEL_CONFIG_AFS_4G = 0x8,
+                   ACCEL_CONFIG_AFS_8G = 0x10,
+                   ACCEL_CONFIG_AFS_16G = 0x18} accel_config_g;
 
 // USER_CTRL 0x6A
 #define USER_CTL_FIFO_EN 0x40
@@ -48,5 +48,6 @@ typedef struct mpu6050 {
 #define READ_TEMPERATURE _IOR('a', 'c', struct xyz_data)
 #define FIFO_COUNT _IOR('a', 'd', struct xyz_data)
 #define SET_SAMPLE_RATE _IOW('a', 'e', int*)
+#define SET_AFS_SEL _IOW('a', 'f', int*)
 
 #endif  // DRIVER_MPU6050_H_

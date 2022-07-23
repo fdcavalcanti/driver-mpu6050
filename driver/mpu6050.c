@@ -171,6 +171,7 @@ void mpu_set_sample_rate(int sample_rate) {
 static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { //NOLINT
   int aux;
   int16_t tmp;
+
   switch (cmd) {
   case READ_ACCELEROMETER:
     mpu_read_accelerometer_axis(&acc_read);
@@ -185,6 +186,22 @@ static long mpu_ioctl(struct file *file, unsigned int cmd, unsigned long arg) { 
       break;
     } else {
       break;
+    }
+
+  case SET_AFS_SEL:
+    if (copy_from_user(&aux, (int*)arg, sizeof(aux)) != 0) {
+      pr_err("Failed to set AFS_SEL");
+    } else {
+      if ((aux == ACCEL_CONFIG_AFS_2G) || (aux == ACCEL_CONFIG_AFS_4G) ||
+          (aux == ACCEL_CONFIG_AFS_8G) || (aux == ACCEL_CONFIG_AFS_16G)) {
+        accel_config_g = aux;
+        mpu_info.sensitivity = sensitivity_afssel[accel_config_g >> 3];
+        pr_info("Setting accelerometer sensitivity: %d (%d)", accel_config_g,
+                mpu_info.sensitivity);
+        MPU_Write_Reg(ACCEL_CONFIG_ADDR, accel_config_g);
+      } else {
+        pr_err("Invalid AFS_SEL value");
+      }
     }
 
   case READ_TEMPERATURE:
@@ -249,24 +266,25 @@ MODULE_DEVICE_TABLE(i2c, mpu_id);
 static int mpu_probe(struct i2c_client *client,
                      const struct i2c_device_id *id) {
   unsigned char who_am_i;
-  uint8_t AFS_SEL = ACCEL_CONFIG_AFS_4G;
+  accel_config_g = ACCEL_CONFIG_AFS_4G;
   pr_info("Initializing driver");
   MPU_Read_Reg(WHO_AM_I_ADDR, &who_am_i);
   if (who_am_i != MPU_ADDR) {
     pr_err("Bad device address: 0x%X", who_am_i);
+    return -1;
   } else {
     pr_info("Found device on: 0x%X", who_am_i);
   }
 
   mpu_info.power_mgmt = PWR_MGMT_CLKSEL_PLL_X;
-  mpu_info.sensitivity = sensitivity_afssel[AFS_SEL >> 3];
+  mpu_info.sensitivity = sensitivity_afssel[accel_config_g >> 3];
   mpu_info.dlpf = CONFIG_DLPF_CFG_OFF;
   mpu_info.sample_rate = 150;
 
   MPU_Write_Reg(PWR_MGMT_ADDR, mpu_info.power_mgmt);
   MPU_Write_Reg(CONFIG, mpu_info.dlpf);
   MPU_Write_Reg(USER_CTRL, USER_CTL_FIFO_EN);
-  MPU_Write_Reg(ACCEL_CONFIG_ADDR, AFS_SEL);
+  MPU_Write_Reg(ACCEL_CONFIG_ADDR, accel_config_g);
   mpu_set_sample_rate(mpu_info.sample_rate);
   MPU_Write_Reg(FIFO_EN, FIFO_EN_ACCEL);
   pr_info("Done probing");
